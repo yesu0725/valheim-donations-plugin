@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json;
 using UnityEngine;
 
 // Loads BepInEx/config/valcoin_shop.yaml — operator-editable shop catalog.
@@ -207,6 +208,46 @@ shop:
         if (string.IsNullOrEmpty(s.Name)) s.Name = s.Id;
         items[s.Id] = s;
         order.Add(s);
+    }
+
+    // ─── remote sync (Phase 3) ──────────────────────────────────────────────
+    //
+    // valcoin_shop.yaml only exists on whichever machine loaded it (the
+    // dedicated server, or a listen-server host). A remote client connecting
+    // to a dedicated server has no such file, so its own Catalog.Load() sees
+    // nothing. CatalogSync broadcasts the server's parsed catalog over RPC;
+    // remote clients apply it here, in memory only — never written to disk,
+    // so it can't stomp a local file and always reflects the server's truth.
+
+    public static string Serialize()
+    {
+        try { return JsonConvert.SerializeObject(Order); }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Valcoin] Catalog serialize failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    public static void ApplyRemote(string json)
+    {
+        if (string.IsNullOrEmpty(json)) return;
+        try
+        {
+            var order = JsonConvert.DeserializeObject<List<Sku>>(json);
+            if (order == null) return;
+
+            var items = new Dictionary<string, Sku>();
+            foreach (var s in order)
+                if (!string.IsNullOrEmpty(s.Id)) items[s.Id] = s;
+
+            Items = items;
+            Order = order;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Valcoin] Catalog ApplyRemote failed: {ex.Message}");
+        }
     }
 
     private static string StripQuotes(string v)

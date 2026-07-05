@@ -16,8 +16,9 @@ using UnityEngine;
 // visible to anyone scrolling back. Silent RPCs avoid that.
 public static class RpcLayer
 {
-    public const string ActionRpc = "vc_action";
-    public const string PanelRpc  = "vc_panel";
+    public const string ActionRpc  = "vc_action";
+    public const string PanelRpc   = "vc_panel";
+    public const string CatalogRpc = "vc_catalog";
 
     private static bool _registeredServer;
     private static bool _registeredClient;
@@ -38,8 +39,9 @@ public static class RpcLayer
         if (!serverSide && !_registeredClient)
         {
             ZRoutedRpc.instance.Register<string>(PanelRpc, HandlePanelOnClient);
+            ZRoutedRpc.instance.Register<string>(CatalogRpc, HandleCatalogOnClient);
             _registeredClient = true;
-            Debug.Log("[Valcoin] RPC registered (client): " + PanelRpc);
+            Debug.Log("[Valcoin] RPC registered (client): " + PanelRpc + ", " + CatalogRpc);
         }
     }
 
@@ -87,5 +89,21 @@ public static class RpcLayer
         if (ZNet.instance != null && ZNet.instance.IsServer()) return;
         try { OnPanelMessage?.Invoke(msg); }
         catch (Exception ex) { Debug.LogError("[Valcoin] OnPanelMessage handler failed: " + ex); }
+    }
+
+    // ─── Server → client: catalog sync (Phase 3) ───────────────────────────
+
+    public static void BroadcastCatalog(string json)
+    {
+        if (ZRoutedRpc.instance == null || string.IsNullOrEmpty(json)) return;
+        try { ZRoutedRpc.instance.InvokeRoutedRPC(ZRoutedRpc.Everybody, CatalogRpc, json); }
+        catch (Exception ex) { Debug.LogError("[Valcoin] BroadcastCatalog failed: " + ex.Message); }
+    }
+
+    private static void HandleCatalogOnClient(long _from, string json)
+    {
+        if (ZNet.instance != null && ZNet.instance.IsServer()) return;
+        try { Catalog.ApplyRemote(json); }
+        catch (Exception ex) { Debug.LogError("[Valcoin] Catalog apply failed: " + ex); }
     }
 }

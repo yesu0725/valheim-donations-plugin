@@ -34,6 +34,12 @@ public class Plugin : BaseUnityPlugin
         go.AddComponent<GrantPoller>();
         DontDestroyOnLoad(go);
 
+        // CatalogSync likewise self-detects server role and is a no-op on
+        // remote clients (see CatalogSync.Loop).
+        var catalogSyncGo = new GameObject("ValcoinCatalogSync");
+        catalogSyncGo.AddComponent<CatalogSync>();
+        DontDestroyOnLoad(catalogSyncGo);
+
         _harmony = new Harmony("com.taeguk.valheimdonations");
         _harmony.PatchAll();
 

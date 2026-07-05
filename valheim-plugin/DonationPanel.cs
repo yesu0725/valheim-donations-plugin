@@ -47,11 +47,17 @@ public class DonationPanel : MonoBehaviour
     // Gift / shout text fields.
     private string _giftTo = "", _giftAmount = "", _titleText = "";
 
-    private GUIStyle _bg, _hdr, _btn, _btnActive, _line, _logLine, _label;
+    private GUIStyle _bg, _hdr, _btn, _btnActive, _btnDim, _line, _logLine, _label;
     private bool _stylesReady;
 
     private float _lastStateFetch;
     private const float StateRefreshSeconds = 15f;
+
+    // Actual reachability, not just "config has a URL" — flips on real fetch
+    // success/failure, same as DonationCodex, so the panel lights up live once
+    // the backend comes online (no restart needed).
+    private bool _online;
+    private const float AutoRefreshSeconds = 20f;
 
     // ─── lifecycle ────────────────────────────────────────────────────────
 
@@ -85,6 +91,10 @@ public class DonationPanel : MonoBehaviour
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible   = true;
             DonationUiState.SetMouseCapture(false);
+
+            // Auto-detect the backend coming online (or dropping) while the
+            // panel is left open — no toggle needed to notice the flip.
+            RefreshStateSoon();
         }
         else if (_wasOpen)
         {
@@ -97,12 +107,14 @@ public class DonationPanel : MonoBehaviour
     private void Toggle()
     {
         _open = !_open;
-        if (_open) RefreshStateSoon();
+        if (_open) RefreshStateSoon(force: true);
     }
 
-    private void RefreshStateSoon()
+    private void RefreshStateSoon(bool force = false)
     {
-        if (Time.realtimeSinceStartup - _lastStateFetch < 1f) return;
+        if (!Config.Ready) { _online = false; return; }
+        float threshold = force ? 1f : AutoRefreshSeconds;
+        if (Time.realtimeSinceStartup - _lastStateFetch < threshold) return;
         _lastStateFetch = Time.realtimeSinceStartup;
         StartCoroutine(FetchState());
     }
@@ -131,7 +143,8 @@ public class DonationPanel : MonoBehaviour
             $"/api/state/{steam64}?top=5",
             (ok, r, err) =>
             {
-                if (!ok || r == null) return;
+                _online = ok && r != null;
+                if (!_online) return;
                 _balance = r.balance;
                 _topDonors = r.top_donors != null ? new List<TopEntry>(r.top_donors) : new List<TopEntry>();
             });
@@ -167,6 +180,9 @@ public class DonationPanel : MonoBehaviour
         _btnActive = new GUIStyle(_btn);
         _btnActive.normal.background = SolidTex(new Color(0.6f, 0.45f, 0.2f, 1f));
         _btnActive.normal.textColor = Color.white;
+
+        _btnDim = new GUIStyle(_btn);
+        _btnDim.normal.textColor = new Color(0.5f, 0.48f, 0.42f);
 
         _line = new GUIStyle();
         _line.normal.background = SolidTex(new Color(0.3f, 0.25f, 0.18f, 0.6f));
@@ -217,7 +233,7 @@ public class DonationPanel : MonoBehaviour
         GUILayout.Label($"Balance:  {_balance} Valcoins", _label);
         var perks = string.Join(", ", PerksForLocalPlayer());
         if (!string.IsNullOrEmpty(perks)) GUILayout.Label($"Perks: {perks}", _label);
-        if (!Config.Ready)
+        if (!_online)
             GUILayout.Label("🔌 Donation service offline — browse now; it activates when the operator connects it.", _label);
 
         DrawHr();
@@ -261,8 +277,15 @@ public class DonationPanel : MonoBehaviour
     {
         GUILayout.Label("Get a donation code, then donate via the link.\nFunds turn into Valcoins automatically.", _label);
         GUILayout.Space(6);
-        if (GUILayout.Button("🎁  Get my donation code", _btn, GUILayout.Height(34)))
-            RpcLayer.SendAction("donate");
+        if (_online)
+        {
+            if (GUILayout.Button("🎁  Get my donation code", _btn, GUILayout.Height(34)))
+                RpcLayer.SendAction("donate");
+        }
+        else
+        {
+            GUILayout.Label("🎁  Get my donation code", _btnDim, GUILayout.Height(34));
+        }
     }
 
     private Vector2 _shopScroll;
@@ -292,8 +315,15 @@ public class DonationPanel : MonoBehaviour
 
             if (!owned)
             {
-                if (GUILayout.Button("Buy", _btn, GUILayout.Width(70)))
-                    RpcLayer.SendAction("buy:" + sku.Id);
+                if (_online)
+                {
+                    if (GUILayout.Button("Buy", _btn, GUILayout.Width(70)))
+                        RpcLayer.SendAction("buy:" + sku.Id);
+                }
+                else
+                {
+                    GUILayout.Label("Buy", _btnDim, GUILayout.Width(70));
+                }
             }
             GUILayout.EndHorizontal();
 
@@ -319,12 +349,19 @@ public class DonationPanel : MonoBehaviour
         GUILayout.EndHorizontal();
 
         GUILayout.Space(6);
-        if (GUILayout.Button("🎁  Send gift", _btn, GUILayout.Height(28)))
+        if (_online)
         {
-            if (string.IsNullOrWhiteSpace(_giftTo) || string.IsNullOrWhiteSpace(_giftAmount))
-                AddLog("⚠️ Fill in both fields.");
-            else
-                RpcLayer.SendAction($"gift:{_giftTo.Trim()}:{_giftAmount.Trim()}");
+            if (GUILayout.Button("🎁  Send gift", _btn, GUILayout.Height(28)))
+            {
+                if (string.IsNullOrWhiteSpace(_giftTo) || string.IsNullOrWhiteSpace(_giftAmount))
+                    AddLog("⚠️ Fill in both fields.");
+                else
+                    RpcLayer.SendAction($"gift:{_giftTo.Trim()}:{_giftAmount.Trim()}");
+            }
+        }
+        else
+        {
+            GUILayout.Label("🎁  Send gift", _btnDim, GUILayout.Height(28));
         }
 
         // Title editor (only if perk owned).
