@@ -1,0 +1,193 @@
+# =====================================================================
+# Donation promotion — ValheimServerGuide guidance
+# =====================================================================
+# Drop into:  <server>/BepInEx/config/ValheimServerGuide/guidance.yaml
+#             (ServerGuide auto-merges every *.yaml in that folder, so you can
+#              keep this as its own file: guidance.donations.yaml)
+#
+# Goal: surface the donation system organically — opt-in, celebratory, never
+# salesy or pay-to-win. All of this is pure ServerGuide YAML (no plugin code).
+# Because Valheim-ServerGuard locks the server to the modpack, every player runs
+# ServerGuide, so these reach 100% of players.
+#
+# TWO honest integration limits (both need a small plugin hook to do "properly";
+# the YAML below degrades gracefully without them):
+#   1. Dynamic top-donor name. ServerGuide text tokens are {playerName} etc. —
+#      there is no {topDonor}. The boss-gratitude beats below nudge players to
+#      type /topdonors instead. A real "sponsored by <name>" line needs the
+#      donation plugin to inject the name (or fire a ServerGuide event carrying it).
+#   2. "Stop nagging once they've donated." There is no `donated` trigger, so
+#      the timed reminder can't stop_when-donated by itself. Keep the interval
+#      long. If the donation plugin ever fires a `donation_received` event into
+#      ServerGuide, add a matching entry id here and list it in stop_when.
+# =====================================================================
+
+guidances:
+
+  # ------------------------------------------------------------------
+  # Support Codex content (category "Support") — opt-in, browsable in F3.
+  # These double as the "how it works" home even without the plugin's F4 Codex.
+  # ------------------------------------------------------------------
+
+  - id: donate_intro
+    title: "Support the Realm"
+    category: Support
+    version: 1
+    once: true
+    scope: player
+    trigger:
+      type: first_login
+    display:
+      mode: raven
+      topic: "Valcoins & Patrons"
+    message: "This realm is kept alight by its patrons. Type /donate any time to support the server and earn Valcoins — spend them in /shop on cosmetics and weekly supply bundles. Press F4 for the full Donation Codex. No pressure, ever — playing is always free."
+
+  - id: donate_how_it_works
+    title: "How Valcoins Work"
+    category: Support
+    version: 1
+    once: true
+    scope: player
+    # Fires a few minutes in so it lands after the player has settled, and only
+    # for players who never saw the first-login note (returning characters).
+    trigger:
+      type: timed
+      id: donate_how_it_works_timer
+      interval: "600"
+    display:
+      mode: chat
+      text: "[Support] /donate mints a code + portal link · /shop lists perks · /coins shows your balance · /gift shares coins · /topdonors ranks patrons. Perks are cosmetic or weekly-capped supply bundles — never power."
+
+  # ------------------------------------------------------------------
+  # Haldor "Support" conversation — hold E on Haldor for an in-lore ask.
+  # The flagship opt-in surface: no chat spam, entirely player-initiated.
+  # ------------------------------------------------------------------
+
+  - id: donate_haldor_talk
+    title: "A Word with Haldor"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: npc_conversation
+      npc: Haldor
+    display:
+      mode: conversation
+      topic: "Haldor leans in"
+      text: "Hah! You've the look of one who shapes this realm. They say its patrons are long remembered… care to hear how?"
+    conversation:
+      choices:
+        - text: "How do I support the server?"
+          goto: donate_haldor_explains
+        - text: "What would I get for it?"
+          goto: donate_haldor_perks
+        - text: "Maybe later."
+
+  - id: donate_haldor_explains
+    title: "Haldor: How to Support"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    # Fired only via the conversation choice above (no world trigger of its own).
+    trigger:
+      type: entry_finished
+      entry: donate_haldor_talk
+    display:
+      mode: message
+      position: Center
+      text: "Type /donate — I'll hand you a code and a portal link. Give what you like through it, and Valcoins find their way to your purse. Then /shop, of course."
+
+  - id: donate_haldor_perks
+    title: "Haldor: Patron's Rewards"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: entry_finished
+      entry: donate_haldor_talk
+    display:
+      mode: message
+      position: Center
+      text: "Naught that'd tip a fight, mind — a star by your name, a title, flair for your Dvergr… and weekly parcels of hard-won food and mead, if your deeds have earned the right to them. Fair's fair."
+
+  # ------------------------------------------------------------------
+  # Gentle periodic reminder — a single raven, long interval, low key.
+  # Replaces the "periodic chat broadcast" (rated medium-annoyance) with a
+  # much softer vanilla popup. See integration limit #2 about stop_when.
+  # ------------------------------------------------------------------
+
+  - id: donate_reminder
+    title: "Patron's Whisper"
+    category: Support
+    version: 1
+    once: false
+    cooldown: 5400          # ~90 min between shows (belt-and-braces with interval)
+    scope: player
+    trigger:
+      type: timed
+      id: donate_reminder_timer
+      interval: "5400"
+    display:
+      mode: raven
+      topic: "The Realm Endures"
+    message: "Enjoying your time here? /donate keeps the realm running — and /topdonors shows who's carried the torch. Only if you're able. Onward, traveler."
+    # When a donation event exists, add: stop_when: [donation_received]
+
+  # ------------------------------------------------------------------
+  # Boss-kill gratitude beats (global) — celebratory, ties the realm's biggest
+  # moments to the patrons who keep it online. Generic (see integration limit #1):
+  # nudges /topdonors rather than naming a donor. Replicate one per boss.
+  # For BiomeLord kills specifically, a BiomeLords `lord_defeated` ServerGuide
+  # event would let you fire the same style of beat on a Lord's death.
+  # ------------------------------------------------------------------
+
+  - id: patrons_beat_eikthyr
+    scope: global
+    once: true
+    version: 1
+    trigger:
+      type: boss_defeated
+      creature: Eikthyr
+    display:
+      mode: message
+      position: Center
+      text: "Eikthyr falls — and this realm still stands, thanks to its patrons. See who carried it: /topdonors"
+    announce:
+      discord: "⚔️ **{playerName}** felled **Eikthyr** on a server kept alive by its patrons. 💛"
+
+  - id: patrons_beat_yagluth
+    scope: global
+    once: true
+    version: 1
+    trigger:
+      type: boss_defeated
+      creature: GoblinKing
+    display:
+      mode: message
+      position: Center
+      text: "Yagluth is undone. Realms like this endure on the backs of their patrons — /topdonors, or /donate to join them."
+    announce:
+      discord: "👑 **{playerName}** ended **Yagluth**. Thanks to every patron keeping the mists open. 💛"
+
+  # Add patrons_beat_* for TheElder, Bonemass, Dragon (Moder), SeekerQueen, Fader.
+
+  # ------------------------------------------------------------------
+  # First Dvergr recruit — a single warm footnote (requires Lost Scrolls II).
+  # Celebrates the milestone, mentions Support ONCE, then never again.
+  # ------------------------------------------------------------------
+
+  - id: donate_first_recruit_note
+    title: "Bonds & Patrons"
+    category: Support
+    version: 1
+    once: true
+    scope: player
+    trigger:
+      type: dvergr_recruited
+    display:
+      mode: raven
+      topic: "A Companion Freed"
+    message: "You've freed your first companion — beautifully done. If you ever want to dress it in patron's flair (cosmetic only), that lives in /shop. Now go, the two of you have a realm to explore."

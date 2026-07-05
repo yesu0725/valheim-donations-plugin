@@ -1,0 +1,24 @@
+# --- Backend lives in its own repo (valheim-donations-backend) ---
+backend/
+
+# --- Copyrighted Valheim / Unity assemblies — never redistribute ---
+valheim-plugin/libs/
+*.dll
+
+# --- .NET build output ---
+valheim-plugin/bin/
+valheim-plugin/obj/
+[Bb]in/
+[Oo]bj/
+
+# --- Python (setup-guide generator) ---
+__pycache__/
+*.pyc
+.venv/
+
+# --- Local tooling / editor ---
+.claude/
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
