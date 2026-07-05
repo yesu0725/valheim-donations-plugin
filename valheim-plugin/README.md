@@ -166,14 +166,37 @@ The csproj expects these in `libs/`. Most come from Valheim's
 (YamlDotNet and Jotunn are no longer required — admin YAML uses a built-in
 regex parser, and slash commands are server-side only.)
 
-## Build
+## Building from source
 
-```bash
-dotnet build -c Release
-```
+> **Heads-up for fresh clones:** `libs/` is **gitignored** and is **not** in
+> this repo. It holds Valheim's and Unity's assemblies (`assembly_valheim.dll`,
+> `UnityEngine.*.dll`), which are copyrighted and cannot be redistributed. You
+> must supply them yourself from your own game install before the build will
+> compile.
 
-Output: `bin/Release/ValheimDonationSystem.dll` → drop into
-`BepInEx/plugins/` on the server.
+1. **Install the .NET SDK** (targets `net472`; the .NET SDK 6.0+ can build it).
+
+2. **Populate `libs/`** with the DLLs listed under
+   [Required DLLs in `libs/`](#required-dlls-in-libs). Copy them out of your own
+   install — most live in `valheim_Data/Managed/` (client) or the dedicated
+   server's `valheim_server_Data/Managed/`, and `0Harmony.dll` / `BepInEx.dll`
+   come from your BepInEx `core/` folder. Match them to **one** install so the
+   assembly versions are consistent.
+
+3. **Build:**
+
+   ```bash
+   dotnet build -c Release
+   ```
+
+   Output: `bin/Release/ValheimDonationSystem.dll` → drop into
+   `BepInEx/plugins/` on the server (and the client too, if you want the F8/F4
+   panels).
+
+4. **Deploy to both halves** (optional, Windows): `deploy.ps1` builds Release and
+   copies the DLL to the client and dedicated-server plugin folders in one step —
+   edit the two paths at the top for your machine. Stop the dedicated server
+   first, or the copy fails because the running process holds a lock on the DLL.
 
 ## Configuration
 
