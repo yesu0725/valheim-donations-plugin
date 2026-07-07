@@ -5,7 +5,7 @@ files before trusting it if it's been a while.
 
 - **Project phase:** 5 (most recent — leaderboard + in-game IMGUI panel).
 - **Backend version:** `0.5.0` (see [main.py](../backend/app/main.py)).
-- **Plugin version:** `5.0.0` (see [Plugin.cs:10](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.1.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
 - **Backend tests:** 11 test files; README claims 39 tests passing. `pytest`
   is not installed in the base Python env — install
   `requirements-dev.txt` in a venv first (see [DEVELOPMENT.md](DEVELOPMENT.md)).
