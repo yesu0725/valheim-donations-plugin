@@ -40,6 +40,7 @@ safe. The backend owns the coin ledger; the plugin owns the perk/SKU effects.
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Idempotency safety nets, reconciliation, common errors |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup for both halves, keeping the setup-guide PDF current |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Planned but unimplemented perks (armor customization, overcharge, reinforce) |
+| [docs/THUNDERSTORE.md](docs/THUNDERSTORE.md) | Packaging the plugin as a Thunderstore release, version-bump + zip checklist |
 
 Each backend/plugin also has its own detailed README
 ([backend/README.md](backend/README.md),

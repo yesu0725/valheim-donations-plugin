@@ -3,6 +3,22 @@
 Backend deploys to Fly.io. The plugin is deployed by copying the built DLL
 onto the Valheim dedicated server — see [PLUGIN.md](PLUGIN.md) for that half.
 
+## Live status (2026-07-08)
+
+- **App:** `valheim-donations` → `https://valheim-donations.fly.dev`
+- **Region:** `sin`, 1 machine, `min_machines_running = 1` (always awake for webhooks)
+- **Volume:** `valcoin_data` (1 GB), created and mounted at `/data`
+- **Secrets set:** `PLUGIN_TOKEN`, `PUBLIC_BASE_URL`, `DONATION_URL`,
+  `KOFI_VERIFICATION_TOKEN`, `KOFI_USERNAME` — **Ko-fi is the only live provider
+  so far.** PayPal / Patreon / Patreon / PayMongo secrets are not set yet; those
+  routes 503 until configured (see [PROVIDERS.md](PROVIDERS.md)).
+- **Plugin side:** `valcoin_config.json` on the dedicated server points
+  `backend_url` at the URL above with the matching `plugin_token`.
+- Fly requires a payment method on file and may flag new accounts for manual
+  "high risk" verification (`fly.io/high-risk-unlock`) before the first
+  `flyctl launch` succeeds — both were one-time hurdles during this rollout,
+  not expected on every deploy.
+
 ## Fly.io configuration
 
 From [backend/fly.toml](../backend/fly.toml):
