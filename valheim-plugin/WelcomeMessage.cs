@@ -32,7 +32,7 @@ public class WelcomeBanner : MonoBehaviour
         if (Player.m_localPlayer == null) yield break;
 
         var msg = string.IsNullOrEmpty(Config.WelcomeMessage)
-            ? $"Press {Config.UiToggleKey ?? "F8"} or {Config.CodexToggleKey ?? "F4"} to support the server"
+            ? $"Press {Config.CodexToggleKey ?? "F4"} to support the server"
             : Config.WelcomeMessage;
         Player.m_localPlayer.Message(MessageHud.MessageType.TopLeft, msg);
         _shownThisSession = true;

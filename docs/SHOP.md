@@ -9,7 +9,7 @@ For the underlying code, see [PLUGIN.md](PLUGIN.md).
 
 ## No chat or console commands
 
-**All donation actions go through the in-game panel (open it with F4 or F8) —
+**All donation actions go through the in-game panel (open it with F4) —
 there is no chat-typed or console command path.** This was a deliberate removal (see
 [STATUS.md](STATUS.md)): the reflection-based `Chat.RPC_ChatMessage` hook
 proved unreliable on a server running several other mods that also patch
@@ -26,11 +26,11 @@ A lightweight `ChatDecorationPatch` still runs server-side — it only prefixes
 a player's normal chat messages with their donor badge (⭐) / chat title, if
 they own those perks. It doesn't parse or intercept commands.
 
-## The in-game panel (F4 or F8) ✅
+## The in-game panel (F4) ✅
 
-There is **one** donation panel, opened with **either** the F8 key
-(`ui_toggle_key`) or the F4 key (`codex_toggle_key`) — both point at the same
-panel, built as [DonationPanel.cs](../valheim-plugin/DonationPanel.cs). It is
+There is **one** donation panel, opened with **F4** (configurable via
+`codex_toggle_key`), built as
+[DonationPanel.cs](../valheim-plugin/DonationPanel.cs). It is
 **fully navigable offline** (before the backend exists): the shop catalog and
 owned perks render from local data, while balance / live patron board /
 purchasing show an "activates when online" state and light up automatically
@@ -161,7 +161,7 @@ discoverable without nagging players.
 
 | Approach | Status | Annoyance | Notes |
 |---|---|---|---|
-| **In-game panel (F4/F8)** | ✅ | none | The browsable, opt-in home for donating, the shop, gifting, and Top Patrons. |
+| **In-game panel (F4)** | ✅ | none | The browsable, opt-in home for donating, the shop, gifting, and Top Patrons. |
 | **One-time HUD on join** | Built, **default ON** | very low | Single TopLeft line, 5s after spawn, points at F8/F4. Toggle via `welcome_message_enabled`; customise via `welcome_message` in `valcoin_config.json`. |
 | **Donor ⭐ badge in chat** | Built | none | Pure passive social proof — donors show off by chatting. |
 | **Top Patrons leaderboard** | Built | none | Opt-in: open the Top tab (F8) or Patrons section (F4). |
@@ -184,6 +184,6 @@ See [ecosystem/donation-hooks.md](ecosystem/donation-hooks.md) for the full plan
 - [valheim-plugin/Flows.cs](../valheim-plugin/Flows.cs) — donate/gift/leaderboard implementations, shared by the router
 - [valheim-plugin/ShopHandler.cs](../valheim-plugin/ShopHandler.cs) — `ApplyEffect` dispatch (add `grant_item` here)
 - [valheim-plugin/Catalog.cs](../valheim-plugin/Catalog.cs) — YAML loader (add `item` / `weekly_cap` / `requires_boss`)
-- [valheim-plugin/DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — the single combined F4/F8 panel
+- [valheim-plugin/DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — the single combined panel (F4)
 - [valheim-plugin/ChatDecoration.cs](../valheim-plugin/ChatDecoration.cs) — passive badge/title chat prefix (not a command)
 - [valheim-plugin/examples/valcoin_shop.example.yaml](../valheim-plugin/examples/valcoin_shop.example.yaml) — proposed catalog

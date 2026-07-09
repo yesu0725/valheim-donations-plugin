@@ -1,7 +1,7 @@
 # Valheim Donations — BepInEx Plugin
 
 Server-side plugin that polls the donations backend for granted Valcoins and
-applies them to players. **All donation actions go through the F4 Codex or F8
+applies them to players. **All donation actions go through the F4
 panel — there is no chat-typed or console command anymore** (removed; see
 "No chat commands" below). The plugin must be installed **client-side** to
 use the donation system at all, not just for quality-of-life.
@@ -21,7 +21,7 @@ player's normal chat messages with their donor badge (⭐) / chat title, if
 they own those perks. It's cosmetic, not a command.
 
 Admins are listed in `BepInEx/config/valcoin_admins.yaml` (Steam64 IDs only) —
-used by the F8 panel's Admin tab (give/remove a player's balance).
+used by the panel's Admin tab (give/remove a player's balance).
 
 ## Shop catalog
 
@@ -51,7 +51,7 @@ shop:
 | Perk               | Type        | What it does                                                        | Status |
 |--------------------|-------------|--------------------------------------------------------------------|--------|
 | `donor_badge`      | grant_perk  | Adds ⭐ prefix to the player's chat messages                       | built  |
-| `chat_title`       | grant_perk  | Unlocks the chat-title editor (F8 Gift tab) to set a `[Bracket]` prefix | built  |
+| `chat_title`       | grant_perk  | Unlocks the chat-title editor (Gift tab) to set a `[Bracket]` prefix | built  |
 | `companion_flair`  | grant_perk  | Donor-only badge colour / name style on Lost Scrolls II Dvergr     | proposed |
 | `lordslayer_title` | grant_perk  | Gilded colour of the *earned* Lordslayer title (all 7 BiomeLords)  | proposed |
 
@@ -72,7 +72,7 @@ A dedicated donations-only Codex panel (separate from ServerGuide's F3 Codex),
 opened with **F4**. Houses: how-it-works, the perk catalog with weekly limits
 remaining, and a **Top Patrons** leaderboard section. Fully offline-resilient
 — browsable before the backend is even configured, lights up live once it's
-online. Buy/donate actions themselves live in the F8 panel.
+online. Buy/donate actions themselves live in the same panel.
 
 ## Persistent state files
 
@@ -83,10 +83,10 @@ online. Buy/donate actions themselves live in the F8 panel.
 - `BepInEx/config/valcoin_data/perks.json`       — per-player perks/charges/title/home
 - `BepInEx/config/valcoin_shop.example.yaml`     — see `examples/` for the proposed ecosystem catalog
 
-## In-game UI panel (F8)
+## In-game UI panel (F4)
 
 The plugin must be installed **client-side too** for this panel to exist —
-press **F8** (configurable) to open it:
+press **F4** (configurable) to open it:
 
 ```
 ┌─── Valheim Donations ──────── [X] ┐
@@ -121,9 +121,9 @@ the donation flow discoverable without nagging players.
 | Approach | Status | Annoyance | Notes |
 |---|---|---|---|
 | **F4 Donation Codex + Top Patrons** | built | none | Browsable, opt-in home for economy, perks, and the patron leaderboard. |
-| **One-time HUD on join** | Built, **default ON** | very low | Single TopLeft line, 5s after spawn, points at F8/F4. Toggle via `welcome_message_enabled`; customise text via `welcome_message` in `valcoin_config.json`. |
+| **One-time HUD on join** | Built, **default ON** | very low | Single TopLeft line, 5s after spawn, points at F4. Toggle via `welcome_message_enabled`; customise text via `welcome_message` in `valcoin_config.json`. |
 | **Donor ⭐ badge in chat** | Built | none | Pure passive social proof — donors show off by chatting. |
-| **Top Patrons leaderboard** | Built | none | Opt-in: open the Top tab (F8) or Patrons section (F4). |
+| **Top Patrons leaderboard** | Built | none | Opt-in: open the Patrons tab (F4). |
 | **Haldor "Support" conversation** | proposed (ServerGuide YAML) | none | In-lore hold-E dialogue — no new code, pure `guidance.yaml`. |
 | **Lord-kill "sponsored by top donor" beat** | proposed (ServerGuide YAML) | low | Celebratory global message on a BiomeLord/boss kill. |
 | **Gentle `timed` reminder** | proposed (ServerGuide YAML) | low | Raven popup ≥ 60 min, `stop_when` already-donated. Replaces the old "periodic chat broadcast" idea. |
@@ -141,7 +141,7 @@ the full ecosystem plan and recommended first slice.
 all.** Earlier versions supported truly vanilla (un-modded) clients via a
 chat-command hook; that was removed for reliability (see
 [docs/SHOP.md](../docs/SHOP.md)), so `/donate`/buy/gift/etc. now only exist as
-F4/F8 panel actions, which require the plugin's client-side UI. On a
+F4 panel actions, which require the plugin's client-side UI. On a
 ServerGuard-locked server this doesn't matter — every connecting player
 already runs the plugin as part of the modpack — but it's a real requirement
 if you deploy this mod standalone.
@@ -165,7 +165,7 @@ The csproj expects these in `libs/`. Most come from Valheim's
   from `valheim_Data/Managed/`.
 - **`UnityEngine.IMGUIModule.dll`** ← needed for the in-game panel (Phase 5).
   Same location.
-- **`UnityEngine.InputLegacyModule.dll`** ← needed for the F8 keybind. Same.
+- **`UnityEngine.InputLegacyModule.dll`** ← needed for the F4 keybind. Same.
 - `Newtonsoft.Json.dll`
 
 (YamlDotNet and Jotunn are no longer required — admin YAML uses a built-in
@@ -195,7 +195,7 @@ regex parser, and slash commands are server-side only.)
    ```
 
    Output: `bin/Release/ValheimDonationSystem.dll` → drop into
-   `BepInEx/plugins/` on the server (and the client too, if you want the F8/F4
+   `BepInEx/plugins/` on the server (and the client too, if you want the F4
    panels).
 
 4. **Deploy to both halves** (optional, Windows): `deploy.ps1` builds Release and

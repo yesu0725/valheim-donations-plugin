@@ -17,8 +17,9 @@ files before trusting it if it's been a while.
   is not installed in the base Python env — install
   `requirements-dev.txt` in a venv first (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 - **Last code activity:** 2026-07-09 (merged F4 Codex + F8 panel into one
-  combined panel, reworked Donate tab with inline code/copy/portal/cooldown/
-  terms modal, purged all emoji, chat/console command removal, Fly.io go-live).
+  F4-only panel, reworked Donate tab with inline code/copy/portal/cooldown/
+  terms modal, purged all emoji, removed F8 hotkey, chat/console command
+  removal, Fly.io go-live).
 - **Deployment target:** Fly.io, region `sin` (Singapore), 256 MB shared VM,
   1 GB persistent volume for SQLite. **Live** — see [DEPLOYMENT.md](DEPLOYMENT.md).
 
@@ -27,14 +28,25 @@ files before trusting it if it's been a while.
 ### F4 Codex + F8 panel merged into one panel (2026-07-09)
 
 `DonationCodex.cs` is deleted; `DonationPanel.cs` is now the single combined
-panel, opened by **either** the F8 key (`ui_toggle_key`) or the F4 key
-(`codex_toggle_key`). Tabs: Donate, Shop, Gift, Patrons, Admin. The Donate
-tab shows the code inline (Copy button + Open-portal button via
-`Application.OpenURL`), enforces a 30s client-side cooldown, and has a Terms
-of Use modal. All emoji were removed from the UI and every server reply
-string — Valheim's IMGUI font renders emoji as blank squares. Donate replies
-now use a structured `__DONATE__:code|url|ttl` / `__DONATE_ERR__:msg` wire
-format (see `Flows.cs` / `DonationPanel.OnServerMessage`).
+panel, opened with **F4** (`codex_toggle_key`). The F8 hotkey was removed
+entirely per user request (`ui_toggle_key` is now unused). Tabs: Donate,
+Shop, Gift, Patrons, Admin. The Donate tab shows the code inline (Copy button
++ Open-portal button via `Application.OpenURL`), enforces a 30s client-side
+cooldown, and has a Terms of Use modal. All emoji were removed from the UI and
+every server reply string — Valheim's IMGUI font renders emoji as blank
+squares. Donate replies now use a structured `__DONATE__:code|url|ttl` /
+`__DONATE_ERR__:msg` wire format (see `Flows.cs` /
+`DonationPanel.OnServerMessage`).
+
+### Client r2modman profile is "Hearthbound Valheim" (not "- Test")
+
+The live client runs the **`Hearthbound Valheim`** r2modman profile, not
+`Hearthbound Valheim - Test`. `deploy.ps1` originally targeted the `- Test`
+profile, so several deploys landed in the wrong place and the running client
+stayed on a stale DLL with placeholder config (showed "Offline"). `deploy.ps1`
+now targets the correct profile. If "Offline" recurs, first confirm which
+profile is actually launched and that its `valcoin_config.json` has the live
+`backend_url` + `plugin_token`.
 
 ### Chat/console commands removed — BREAKING (2026-07-09)
 

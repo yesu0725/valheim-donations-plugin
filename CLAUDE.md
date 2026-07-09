@@ -2,7 +2,7 @@
 
 Two-part system that lets Valheim players donate via Ko-fi /
 PayPal / Patreon / PayMongo and get **Valcoins** credited in-game, redeemable in
-an in-game shop for perks. All donation actions happen through the F4 Codex / F8
+an in-game shop for perks. All donation actions happen through the in-game
 panel -- the plugin must be installed client-side to use the system at all
 (no chat/console commands; see docs/SHOP.md).
 
@@ -19,7 +19,7 @@ valheim-donations/
 ## Architecture in one paragraph
 
 The plugin mints a short-lived **claim code** (`AB12-CD34`, 30-min TTL) when a
-player clicks Donate in the F4 Codex or F8 panel (the only input path — there
+player clicks Donate in the in-game panel (F4 - the only input path — there
 are no chat/console commands), DMs the donor a portal URL, and polls
 `/api/grants/pending` every ~10s. The donor picks a provider in the portal;
 each webhook verifies its own signature, resolves the code → Steam64, and
@@ -38,7 +38,7 @@ safe. The backend owns the coin ledger; the plugin owns the perk/SKU effects.
 | [docs/PLUGIN.md](docs/PLUGIN.md) | BepInEx plugin layout, build, required DLLs, config files |
 | [docs/PROVIDERS.md](docs/PROVIDERS.md) | Ko-fi / PayPal / Patreon / PayMongo setup + env vars |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Fly.io launch, secrets, volume, redeploy checklist |
-| [docs/SHOP.md](docs/SHOP.md) | Chat commands, shop YAML schema, `grant_item` weekly-limited consumables, F8 panel + F4 Donation Codex, advertising kit |
+| [docs/SHOP.md](docs/SHOP.md) | Chat commands, shop YAML schema, `grant_item` weekly-limited consumables, in-game panel (F4), advertising kit |
 | [docs/ecosystem/](docs/ecosystem/README.md) | Sibling mods (BiomeLords, Lost Scrolls II, ServerGuide, ServerGuard) + balance-guarded donation-promotion proposals |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Idempotency safety nets, reconciliation, common errors |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup for both halves, keeping the setup-guide PDF current |

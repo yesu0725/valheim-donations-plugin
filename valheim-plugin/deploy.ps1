@@ -13,7 +13,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dll  = Join-Path $here 'bin\Release\ValheimDonationSystem.dll'
 
 $pluginFolders = @(
-  'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Valheim - Test\BepInEx\plugins',
+  'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Valheim\BepInEx\plugins',
   'C:\Program Files (x86)\Steam\steamapps\common\Valheim dedicated server\BepInEx\plugins'
 )
 $subfolderName = 'TaegukGaming-Valheim_Donations'

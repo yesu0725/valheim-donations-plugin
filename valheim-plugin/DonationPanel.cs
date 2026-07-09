@@ -6,9 +6,8 @@ using UnityEngine;
 // Client-side in-game GUI for the donations system — the single, combined
 // panel (this replaced the earlier split F4 "Codex" + F8 "quick panel").
 //
-// Opens with EITHER the F8 key (ui_toggle_key) or the F4 key (codex_toggle_key)
-// — both point at this one panel now, so there's no confusion about which key
-// does what.
+// Opens with the F4 key (configurable via valcoin_config.json ->
+// codex_toggle_key). There is a single hotkey by design.
 //
 // Design goals:
 //   * Zero external UI dependencies (no Jotunn). Unity IMGUI only.
@@ -33,8 +32,7 @@ public class DonationPanel : MonoBehaviour
     private bool _isAdmin;
     private bool _askedWhoAmI;
 
-    private KeyCode _keyPrimary = KeyCode.F8;    // ui_toggle_key
-    private KeyCode _keySecondary = KeyCode.F4;  // codex_toggle_key
+    private KeyCode _toggleKey = KeyCode.F4;    // codex_toggle_key
 
     // Cached per-player state.
     private int _balance;
@@ -74,12 +72,9 @@ public class DonationPanel : MonoBehaviour
 
     private void Awake()
     {
-        if (!string.IsNullOrEmpty(Config.UiToggleKey)
-            && Enum.TryParse<KeyCode>(Config.UiToggleKey, true, out var k1))
-            _keyPrimary = k1;
         if (!string.IsNullOrEmpty(Config.CodexToggleKey)
-            && Enum.TryParse<KeyCode>(Config.CodexToggleKey, true, out var k2))
-            _keySecondary = k2;
+            && Enum.TryParse<KeyCode>(Config.CodexToggleKey, true, out var k))
+            _toggleKey = k;
 
         RpcLayer.OnPanelMessage += OnServerMessage;
         DontDestroyOnLoad(gameObject);
@@ -95,8 +90,7 @@ public class DonationPanel : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(_keyPrimary) || (_keySecondary != _keyPrimary && Input.GetKeyDown(_keySecondary)))
-            Toggle();
+        if (Input.GetKeyDown(_toggleKey)) Toggle();
 
         if (_open)
         {
