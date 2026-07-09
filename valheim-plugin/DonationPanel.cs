@@ -244,7 +244,10 @@ public class DonationPanel : MonoBehaviour
         var perks = string.Join(", ", PerksForLocalPlayer());
         if (!string.IsNullOrEmpty(perks)) GUILayout.Label($"Perks: {perks}", _label);
         if (!_online)
-            GUILayout.Label("🔌 Donation service offline — browse now; it activates when the operator connects it.", _label);
+            GUILayout.Label(Config.Ready
+                ? "🔌 Can't reach the donation service right now — browse now; it'll reconnect automatically."
+                : "🔌 This client's valcoin_config.json isn't set up yet (ask the operator) — browse now; it activates once configured.",
+                _label);
 
         DrawHr();
 

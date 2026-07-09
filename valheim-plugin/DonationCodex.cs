@@ -149,7 +149,9 @@ public class DonationCodex : MonoBehaviour
 
         GUILayout.Label(_online
             ? $"Balance: {(_balance < 0 ? "—" : _balance.ToString())} Valcoins"
-            : "The donation service isn't connected yet — everything here still works to browse; it activates once the operator brings it online.",
+            : Config.Ready
+                ? "Can't reach the donation service right now — everything here still works to browse; it'll reconnect automatically."
+                : "This client's valcoin_config.json isn't set up yet (ask the operator) — browsing still works; it activates once configured.",
             _sub);
 
         DrawHr();
