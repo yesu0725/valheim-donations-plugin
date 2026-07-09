@@ -15,18 +15,18 @@ the database directly, and the backend never touches game state directly.
 ## Donation flow
 
 The plugin mints a short-lived **claim code** (`AB12-CD34`, 30-min TTL) when a
-player runs `/donate`, DMs the donor a portal URL, and polls
-`/api/grants/pending` every ~10s. The donor picks a provider in the portal;
-each webhook verifies its own signature, resolves the code → Steam64, and
-writes a `grants` row. The plugin applies grants, acks them, and updates a
-local balance cache.
+player clicks **Donate** in the F4 Codex or F8 panel, DMs the donor a portal
+URL, and polls `/api/grants/pending` every ~10s. The donor picks a provider
+in the portal; each webhook verifies its own signature, resolves the code →
+Steam64, and writes a `grants` row. The plugin applies grants, acks them, and
+updates a local balance cache.
 
 ```
-/donate in-game
+player clicks Donate (F4/F8)
    │  plugin → POST /api/claim
    ▼
 backend mints AB12-CD34 (TTL 30 min)
-   │  plugin DMs donor: "Donate at /portal, code is AB12-CD34"
+   │  plugin shows the donor: "Donate at /portal, code is AB12-CD34"
    ▼
 donor visits /portal/AB12-CD34
    ├── Ko-fi / PayPal → opens hosted page (code prefilled where possible)
@@ -38,8 +38,10 @@ provider webhook fires → backend resolves code → grants row
 plugin polls /api/grants/pending → applies → /api/grants/ack
 ```
 
-Shop purchases (`/buy`) and gifts (`/gift`) call atomic `/api/spend` and
-`/api/transfer` endpoints, idempotency-keyed so retries are safe.
+Shop purchases and gifts (Shop/Gift tabs) call atomic `/api/spend` and
+`/api/transfer` endpoints, idempotency-keyed so retries are safe. All of
+these are F4 Codex / F8 panel actions over a silent RPC — there is no chat or
+console command path (see [SHOP.md](SHOP.md#no-chat-or-console-commands)).
 
 The plugin owns the SKU catalog and applies effects locally (cosmetic
 `grant_perk` perks today; a proposed `grant_item` effect spawns weekly-limited

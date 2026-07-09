@@ -1,58 +1,79 @@
-# Chat Commands & Shop
+# In-Game UI & Shop
 
-The user-facing surface of the plugin — what players actually type and see.
+The user-facing surface of the plugin — what players actually see and click.
 For the underlying code, see [PLUGIN.md](PLUGIN.md).
 
 > **Status legend:** ✅ built today · 🔜 proposed (design locked, not yet coded —
 > see [ecosystem/donation-hooks.md](ecosystem/donation-hooks.md) and
 > [../valheim-plugin/examples/valcoin_shop.example.yaml](../valheim-plugin/examples/valcoin_shop.example.yaml)).
 
-## Chat commands
+## No chat or console commands
 
-| Command | Who | What | Status |
-|---------|-----|------|--------|
-| `/coins` | anyone | Show your Valcoin balance + owned perks | ✅ |
-| `/donate` | anyone | Mint a claim code + DM you the donation URL | ✅ |
-| `/shop` | anyone | List all SKUs + your balance + ownership | ✅ |
-| `/buy <sku>` | anyone | Purchase a SKU | ✅ |
-| `/gift <player> <amount>` | anyone | Transfer Valcoins to another player | ✅ |
-| `/title <text \| clear>` | perk | Set chat title prefix (needs `chat_title` perk) | ✅ |
-| `/topdonors` | anyone | Show lifetime top 5 donor leaderboard | ✅ |
-| `/givecoins <player> <amount>` | admin | Grant coins manually | ✅ |
-| `/removecoins <player> <amount>` | admin | Subtract coins manually | ✅ |
+**All donation actions go through the F4 Codex or F8 panel — there is no
+chat-typed or console command path.** This was a deliberate removal (see
+[STATUS.md](STATUS.md)): the reflection-based `Chat.RPC_ChatMessage` hook
+proved unreliable on a server running several other mods that also patch
+chat, and the UI panels already covered the same actions over a silent RPC.
 
-Admins are listed in `BepInEx/config/valcoin_admins.yaml` (Steam64 IDs only).
+**Consequence:** a truly vanilla (un-modded) client can no longer use the
+donation system at all — the plugin must be installed **client-side**, not
+just server-side, to donate/shop/gift. On a ServerGuard-locked server this is
+moot (ServerGuard already kicks vanilla clients), but it's a real requirement
+change for anyone deploying this mod standalone. See
+[PLUGIN.md](PLUGIN.md#vanilla-client-compatibility).
 
-> **Removed by design decision:** `/sethome`, `/home`, and `/shout` (with their
-> `sethome` and `shout` perks). They still exist in code until the next plugin
-> update — to retire them now, delete their SKUs from `valcoin_shop.yaml`; the
-> code paths can be pruned in the same pass that adds `grant_item`.
+A lightweight `ChatDecorationPatch` still runs server-side — it only prefixes
+a player's normal chat messages with their donor badge (⭐) / chat title, if
+they own those perks. It doesn't parse or intercept commands.
 
-## Donation Codex (F4) ✅ (offline-resilient) · live data 🔜
+## Donation Codex (F4) ✅
 
 A dedicated **donations-only** Codex panel — separate from ServerGuide's F3
 guide Codex — opened with **F4** (configurable via `codex_toggle_key`). Built as
 [DonationCodex.cs](../valheim-plugin/DonationCodex.cs). It is **fully navigable
-offline** (before the backend exists): the command reference, shop catalog, and
-owned perks render from local data, while balance / live patron board /
-purchasing show an "activates when online" state and light up automatically once
-the operator connects the backend. Sections — Overview · Perks & Shop · Patrons
-· Donate. It is the single home for the whole donation surface, so nothing has
-to nag in chat:
+offline** (before the backend exists): the shop catalog and owned perks render
+from local data, while balance / live patron board / purchasing show an
+"activates when online" state and light up automatically once the operator
+connects the backend — no client update needed. Sections — Overview · Perks &
+Shop · Patrons · Donate.
 
-- **How it works** — Valcoins, `/donate`, the claim-code flow.
-- **Economy & commands** — every supporting command in one place: `/coins`,
-  `/shop`, `/buy <sku>`, `/gift <player> <amount>`, `/topdonors`, `/title`, plus
-  the F8 quick panel.
+- **How it works** — Valcoins, the claim-code flow, and a pointer to the F8
+  panel for buy/gift/admin actions.
 - **Perks** — the current cosmetic + consumable catalog with prices and any
   **weekly limits remaining**.
-- **Top Patrons** — a leaderboard section mirroring `/topdonors` (lifetime top
-  donors), refreshed on open. Passive social proof that lives *in* the Codex,
-  not in chat.
+- **Top Patrons** — a leaderboard section (lifetime top donors), refreshed on
+  open.
 
-Implementation note: this is new plugin UI (reuse the vanilla IMGUI approach of
-the F8 panel); everything inside it reads existing backend data (`/shop`,
-`/topdonors`, balance).
+## In-game UI panel (F8) ✅
+
+Press **F8** (configurable via `ui_toggle_key`) to open the action panel:
+
+```
+┌─── Valheim Donations ──────── [X] ┐
+│ Balance: 1500 c                   │
+│ Perks: donor_badge, companion_flair│
+│ [Donate] [Shop] [Gift] [Top] [Admin]│  <- Admin only shows for admins
+│ ───────────────────────────────── │
+│ < per-tab content >               │
+│ ───────────────────────────────── │
+│ Messages (server replies)         │
+└───────────────────────────────────┘
+```
+
+- **Donate tab** — one button. Calls the backend, displays your code + URL.
+- **Shop tab** — scrollable SKU list with "Buy" buttons; shows owned/charges and
+  (for `grant_item` SKUs) the weekly cap remaining per row.
+- **Gift tab** — recipient + amount fields, "Send gift" button. Also exposes the
+  chat-title editor when you own the `chat_title` perk.
+- **Top tab** — leaderboard of lifetime donors.
+- **Admin tab** (admins only) — give/remove a player's Valcoin balance
+  manually. Only appears after the server confirms (via a `whoami` RPC
+  round-trip) that the local Steam64 is in `valcoin_admins.yaml`.
+
+The panel auto-closes when you open inventory, map, or pause menu. Sends
+every action via a silent `vc_action` RPC so nothing appears in public chat.
+The plugin must be installed client-side to see this panel at all — see the
+[No chat or console commands](#no-chat-or-console-commands) section above.
 
 ## Shop catalog
 
@@ -98,7 +119,7 @@ shop:
 | Perk | Type | What it does | Status |
 |---|---|---|---|
 | `donor_badge` | grant_perk | Adds ⭐ prefix to the player's chat messages | ✅ |
-| `chat_title` | grant_perk | Unlocks `/title <name>` to set a `[Bracket]` prefix | ✅ |
+| `chat_title` | grant_perk | Unlocks the chat-title editor (Gift tab) to set a `[Bracket]` prefix | ✅ |
 | `companion_flair` | grant_perk | Donor-only badge colour / name style on your Lost Scrolls II Dvergr (cosmetic only) | 🔜 |
 | `lordslayer_title` | grant_perk | Gilded colour of the *earned* Lordslayer title (must have slain all 7 BiomeLords) | 🔜 |
 
@@ -110,7 +131,7 @@ guardrails (see [ecosystem/donation-hooks.md](ecosystem/donation-hooks.md)):
 
 - **Weekly cap** per player per SKU, reset on a fixed boundary (recommend Monday
   00:00 server time). Enforced **backend-side** on `/api/spend` (it owns the
-  ledger); `/buy` reports "cap reached, resets in Nd Nh".
+  ledger); the Shop tab reports "cap reached, resets in Nd Nh".
 - **Progression gate** via `requires_boss` — e.g. Ashlands food needs
   `defeated_fader`, so you can't buy end-game food as a Meadows newbie.
 - **Earnable only** — everything sold is something a player can already
@@ -140,37 +161,6 @@ add the SKUs to `valcoin_shop.yaml` (copy from the example) and confirm the
 Ashlands food prefab ids for your Valheim version. Adding a plain `grant_perk`
 SKU is still just a YAML edit.
 
-## In-game UI panel (F8)
-
-If the plugin is installed **client-side too**, press **F8** (configurable)
-to open a minimal IMGUI panel:
-
-```
-┌─── Valheim Donations ──────── [X] ┐
-│ Balance: 1500 c                   │
-│ Perks: donor_badge, companion_flair│
-│ [Donate] [Shop] [Gift] [Top]      │
-│ ───────────────────────────────── │
-│ < per-tab content >               │
-│ ───────────────────────────────── │
-│ Messages (server replies)         │
-└───────────────────────────────────┘
-```
-
-- **Donate tab** — one button. Calls the backend, displays your code + URL.
-- **Shop tab** — scrollable SKU list with "Buy" buttons; shows owned/charges and
-  (for `grant_item` SKUs) the weekly cap remaining per row.
-- **Gift tab** — recipient + amount fields, "Send gift" button. Also exposes the
-  `/title` editor when you own that perk.
-- **Top tab** — leaderboard of lifetime donors.
-
-The panel auto-closes when you open inventory, map, or pause menu. Sends
-commands via a silent `vc_action` RPC so nothing appears in public chat.
-
-Vanilla clients (no plugin) keep working — all the same actions are available
-via the chat commands above. The panel is pure quality-of-life for modded
-clients. (The F4 Donation Codex above is the fuller, browsable version.)
-
 ## Advertising the donation system
 
 Defaults-light advertising kit — the goal is to make the donation flow
@@ -178,10 +168,10 @@ discoverable without nagging players.
 
 | Approach | Status | Annoyance | Notes |
 |---|---|---|---|
-| **F4 Donation Codex** | 🔜 | none | The browsable, opt-in home for economy, perks, and Top Patrons. |
-| **One-time HUD on join** | Built, **default ON** | very low | Single TopLeft line, 5s after spawn. Toggle via `welcome_message_enabled`; customise via `welcome_message` in `valcoin_config.json`. |
+| **F4 Donation Codex** | ✅ | none | The browsable, opt-in home for economy, perks, and Top Patrons. |
+| **One-time HUD on join** | Built, **default ON** | very low | Single TopLeft line, 5s after spawn, points at F8/F4. Toggle via `welcome_message_enabled`; customise via `welcome_message` in `valcoin_config.json`. |
 | **Donor ⭐ badge in chat** | Built | none | Pure passive social proof — donors show off by chatting. |
-| **`/topdonors` leaderboard** | Built | none | Opt-in: players type the command or open the Top tab / F4 Patrons board. |
+| **Top Patrons leaderboard** | Built | none | Opt-in: open the Top tab (F8) or Patrons section (F4). |
 | **Haldor "Support" conversation** | 🔜 (ServerGuide YAML) | none | In-lore hold-E dialogue explaining donations. No new code — pure `guidance.yaml`. |
 | **Lord-kill "sponsored by top donor" beat** | 🔜 (ServerGuide YAML) | low | Celebratory global message on a BiomeLord/boss kill. |
 | **Gentle `timed` reminder** | 🔜 (ServerGuide YAML) | low | Raven popup ≥ 60 min interval, `stop_when` already-donated. |
@@ -197,8 +187,11 @@ See [ecosystem/donation-hooks.md](ecosystem/donation-hooks.md) for the full plan
 
 ## Source of truth
 
-- [valheim-plugin/Flows.cs](../valheim-plugin/Flows.cs) — command implementations
+- [valheim-plugin/UiActionRouter.cs](../valheim-plugin/UiActionRouter.cs) — server-side dispatch for every panel action (including admin)
+- [valheim-plugin/Flows.cs](../valheim-plugin/Flows.cs) — donate/gift/leaderboard implementations, shared by the router
 - [valheim-plugin/ShopHandler.cs](../valheim-plugin/ShopHandler.cs) — `ApplyEffect` dispatch (add `grant_item` here)
 - [valheim-plugin/Catalog.cs](../valheim-plugin/Catalog.cs) — YAML loader (add `item` / `weekly_cap` / `requires_boss`)
 - [valheim-plugin/DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — F8 panel
+- [valheim-plugin/DonationCodex.cs](../valheim-plugin/DonationCodex.cs) — F4 Codex
+- [valheim-plugin/ChatDecoration.cs](../valheim-plugin/ChatDecoration.cs) — passive badge/title chat prefix (not a command)
 - [valheim-plugin/examples/valcoin_shop.example.yaml](../valheim-plugin/examples/valcoin_shop.example.yaml) — proposed catalog

@@ -191,19 +191,15 @@ public class DonationCodex : MonoBehaviour
         GUILayout.Space(8);
 
         GUILayout.Label("How Valcoins work", _sub);
-        Bullet("Run /donate to get a code + a portal link.");
+        Bullet("Open the Donate tab here to get a code + a portal link.");
         Bullet("Donate through the portal; Valcoins are credited automatically.");
-        Bullet("Spend them in Perks & Shop; check your balance any time.");
+        Bullet("Spend them in Perks & Shop; your balance is always shown above.");
         GUILayout.Space(8);
 
-        GUILayout.Label("Commands", _sub);
-        Bullet("/donate — get your donation code + link");
-        Bullet("/coins — show your Valcoin balance + perks");
-        Bullet("/shop — list everything for sale");
-        Bullet("/buy <id> — purchase an item");
-        Bullet("/gift <player> <amount> — share Valcoins");
-        Bullet("/topdonors — the patron leaderboard");
-        Bullet("/title <text> — set a chat title (with the perk)");
+        GUILayout.Label("Everything's in the panels", _sub);
+        Bullet("This Codex (F4) — browse the shop, patrons, and get your donation code.");
+        Bullet($"The quick panel ({Config.UiToggleKey ?? "F8"}) — buy, gift, and check the leaderboard on the go.");
+        Bullet("No chat commands needed — everything works from these two panels.");
         GUILayout.Space(8);
         GUILayout.Label($"Press {_toggleKey} any time to open this Codex.", _label);
     }

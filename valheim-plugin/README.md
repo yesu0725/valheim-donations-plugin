@@ -1,28 +1,27 @@
 # Valheim Donations — BepInEx Plugin
 
 Server-side plugin that polls the donations backend for granted Valcoins and
-applies them to players. Works for vanilla AND modded clients (chat slash
-commands are intercepted server-side).
+applies them to players. **All donation actions go through the F4 Codex or F8
+panel — there is no chat-typed or console command anymore** (removed; see
+"No chat commands" below). The plugin must be installed **client-side** to
+use the donation system at all, not just for quality-of-life.
 
-## Chat commands
+## No chat or console commands
 
-| Command                              | Who    | What                                              |
-|--------------------------------------|--------|---------------------------------------------------|
-| `/coins`                             | anyone | Show your Valcoin balance + owned perks           |
-| `/donate`                            | anyone | Mint a claim code + DM you the donation URL       |
-| `/shop`                              | anyone | List all SKUs + your balance + ownership          |
-| `/buy <sku>`                         | anyone | Purchase a SKU                                    |
-| `/gift <player> <amount>`            | anyone | Transfer Valcoins to another player               |
-| `/title <text \| clear>`             | perk   | Set chat title prefix (needs `chat_title` perk)   |
-| `/topdonors`                         | anyone | Show lifetime top 5 donor leaderboard             |
-| `/givecoins <player> <amount>`       | admin  | Grant coins manually                              |
-| `/removecoins <player> <amount>`     | admin  | Subtract coins manually                           |
+Chat-typed slash commands (`/donate`, `/buy`, `/gift`, etc.) and their admin
+equivalents (`/givecoins`, `/removecoins`) were removed — the reflection-based
+`Chat.RPC_ChatMessage` hook they relied on proved unreliable on a server
+running several other mods that also patch chat, and the UI panels already
+covered the same actions over a silent RPC. See [docs/SHOP.md](../docs/SHOP.md)
+for the full writeup and consequences (vanilla-client support is gone; the
+plugin is now required client-side).
 
-Admins are listed in `BepInEx/config/valcoin_admins.yaml` (Steam64 IDs only).
+A small `ChatDecorationPatch` still runs server-side — it only prefixes a
+player's normal chat messages with their donor badge (⭐) / chat title, if
+they own those perks. It's cosmetic, not a command.
 
-> **Removed by design decision:** `/sethome`, `/home`, `/shout` (and the
-> `sethome` / `shout` perks). Still present in code until the next plugin
-> update — retire them by deleting their SKUs from `valcoin_shop.yaml`.
+Admins are listed in `BepInEx/config/valcoin_admins.yaml` (Steam64 IDs only) —
+used by the F8 panel's Admin tab (give/remove a player's balance).
 
 ## Shop catalog
 
@@ -52,7 +51,7 @@ shop:
 | Perk               | Type        | What it does                                                        | Status |
 |--------------------|-------------|--------------------------------------------------------------------|--------|
 | `donor_badge`      | grant_perk  | Adds ⭐ prefix to the player's chat messages                       | built  |
-| `chat_title`       | grant_perk  | Unlocks `/title <name>` to set a `[Bracket]` prefix                | built  |
+| `chat_title`       | grant_perk  | Unlocks the chat-title editor (F8 Gift tab) to set a `[Bracket]` prefix | built  |
 | `companion_flair`  | grant_perk  | Donor-only badge colour / name style on Lost Scrolls II Dvergr     | proposed |
 | `lordslayer_title` | grant_perk  | Gilded colour of the *earned* Lordslayer title (all 7 BiomeLords)  | proposed |
 
@@ -67,12 +66,13 @@ parser cases, a relaxed `Commit` guard (grant_item SKUs have no `perk`), a
 Add plain `grant_perk` SKUs by editing the YAML. New effect types require a code
 change in `ShopHandler.cs::ApplyEffect`.
 
-## Donation Codex (F4, proposed)
+## Donation Codex (F4)
 
 A dedicated donations-only Codex panel (separate from ServerGuide's F3 Codex),
-opened with **F4**. Houses: how-it-works, the economy/commands, the perk
-catalog with weekly limits remaining, and a **Top Patrons** leaderboard section
-(mirrors `/topdonors`). New plugin UI; reuses the F8 panel's IMGUI approach.
+opened with **F4**. Houses: how-it-works, the perk catalog with weekly limits
+remaining, and a **Top Patrons** leaderboard section. Fully offline-resilient
+— browsable before the backend is even configured, lights up live once it's
+online. Buy/donate actions themselves live in the F8 panel.
 
 ## Persistent state files
 
@@ -83,16 +83,16 @@ catalog with weekly limits remaining, and a **Top Patrons** leaderboard section
 - `BepInEx/config/valcoin_data/perks.json`       — per-player perks/charges/title/home
 - `BepInEx/config/valcoin_shop.example.yaml`     — see `examples/` for the proposed ecosystem catalog
 
-## In-game UI panel (Phase 5)
+## In-game UI panel (F8)
 
-If the plugin is installed **client-side too**, press **F8** (configurable) to
-open a minimal IMGUI panel:
+The plugin must be installed **client-side too** for this panel to exist —
+press **F8** (configurable) to open it:
 
 ```
 ┌─── Valheim Donations ──────── [X] ┐
 │ Balance: 1500 c                   │
 │ Perks: donor_badge, companion_flair│
-│ [Donate] [Shop] [Gift] [Top]      │
+│ [Donate] [Shop] [Gift] [Top] [Admin]│  <- Admin only shows for admins
 │ ───────────────────────────────── │
 │ < per-tab content >               │
 │ ───────────────────────────────── │
@@ -104,15 +104,14 @@ open a minimal IMGUI panel:
 - **Shop tab** — scrollable SKU list with "Buy" buttons; shows owned/charges and
   (for `grant_item` SKUs) the weekly cap remaining per row.
 - **Gift tab** — recipient + amount fields, "Send gift" button. Also exposes the
-  `/title` editor when you own that perk.
+  chat-title editor when you own the `chat_title` perk.
 - **Top tab** — leaderboard of lifetime donors.
+- **Admin tab** — give/remove a player's Valcoin balance manually. Only
+  rendered once the server confirms (via a `whoami` RPC) the local Steam64 is
+  in `valcoin_admins.yaml`.
 
 The panel auto-closes when you open inventory, map, or pause menu. Sends
-commands via a silent `vc_action` RPC so nothing appears in public chat.
-
-Vanilla clients (no plugin) keep working — all the same actions are available
-via the chat commands above. The panel is pure quality-of-life for modded
-clients.
+every action via a silent `vc_action` RPC so nothing appears in public chat.
 
 ## Advertising the donation system
 
@@ -121,10 +120,10 @@ the donation flow discoverable without nagging players.
 
 | Approach | Status | Annoyance | Notes |
 |---|---|---|---|
-| **F4 Donation Codex + Top Patrons** | proposed | none | Browsable, opt-in home for economy, perks, and the patron leaderboard. |
-| **One-time HUD on join** | Built, **default ON** | very low | Single TopLeft line, 5s after spawn. Toggle via `welcome_message_enabled`; customise text via `welcome_message` in `valcoin_config.json`. |
-| **Donor ⭐ badge in chat** | Built (Phase 4) | none | Pure passive social proof — donors show off by chatting. |
-| **`/topdonors` leaderboard** | Built | none | Opt-in: players type the command or open the Top tab / F4 Patrons board. |
+| **F4 Donation Codex + Top Patrons** | built | none | Browsable, opt-in home for economy, perks, and the patron leaderboard. |
+| **One-time HUD on join** | Built, **default ON** | very low | Single TopLeft line, 5s after spawn, points at F8/F4. Toggle via `welcome_message_enabled`; customise text via `welcome_message` in `valcoin_config.json`. |
+| **Donor ⭐ badge in chat** | Built | none | Pure passive social proof — donors show off by chatting. |
+| **Top Patrons leaderboard** | Built | none | Opt-in: open the Top tab (F8) or Patrons section (F4). |
 | **Haldor "Support" conversation** | proposed (ServerGuide YAML) | none | In-lore hold-E dialogue — no new code, pure `guidance.yaml`. |
 | **Lord-kill "sponsored by top donor" beat** | proposed (ServerGuide YAML) | low | Celebratory global message on a BiomeLord/boss kill. |
 | **Gentle `timed` reminder** | proposed (ServerGuide YAML) | low | Raven popup ≥ 60 min, `stop_when` already-donated. Replaces the old "periodic chat broadcast" idea. |
@@ -136,15 +135,21 @@ YAML promos above reach 100% of players. See
 [../docs/ecosystem/donation-hooks.md](../docs/ecosystem/donation-hooks.md) for
 the full ecosystem plan and recommended first slice.
 
-## Vanilla-client compatibility note
+## Vanilla-client compatibility
 
-All commands work for vanilla (un-modded) clients via the server-side
-`Chat.RPC_ChatMessage` patch. The F8 panel and the proposed F4 Donation Codex
-are quality-of-life extras for clients that also run the plugin; vanilla clients
-use the chat commands instead.
+**The plugin must be installed client-side to use the donation system at
+all.** Earlier versions supported truly vanilla (un-modded) clients via a
+chat-command hook; that was removed for reliability (see
+[docs/SHOP.md](../docs/SHOP.md)), so `/donate`/buy/gift/etc. now only exist as
+F4/F8 panel actions, which require the plugin's client-side UI. On a
+ServerGuard-locked server this doesn't matter — every connecting player
+already runs the plugin as part of the modpack — but it's a real requirement
+if you deploy this mod standalone.
 
-The proposed `grant_item` consumables spawn items directly into the player's
-inventory server-side, so they work for vanilla clients too.
+The `grant_item` consumables still spawn items directly into the player's
+inventory server-side (not written client-side), so delivery itself works
+regardless of client mods — the purchase trigger is what now requires the
+client plugin.
 
 ## Required DLLs in `libs/`
 

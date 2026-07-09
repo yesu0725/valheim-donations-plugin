@@ -74,7 +74,7 @@ public static class Catalog
 @"# Valcoin shop catalog
 # -----------------------------------------------------------------------
 # Each SKU has:
-#   name:          what shows in /shop
+#   name:          what shows in the Shop tab (F8 panel / F4 Codex)
 #   description:   helper text
 #   price:         Valcoin cost
 #   effect:        grant_perk | add_charges | grant_item
@@ -96,7 +96,7 @@ shop:
 
   chat_title:
     name: ""Chat Title""
-    description: ""Unlocks /title <name> to set a custom prefix (e.g. [Jarl])""
+    description: ""Unlocks a chat title editor in the Gift tab to set a custom prefix (e.g. [Jarl])""
     price: 1500
     effect: grant_perk
     perk: chat_title

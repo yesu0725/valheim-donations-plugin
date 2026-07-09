@@ -29,7 +29,7 @@ public static class DonateFlow
                 if (!ok || r == null)
                 {
                     reply("❌ Couldn't reach the donations service. Try again later.");
-                    Debug.LogWarning($"[Valcoin] /donate failed: {err}");
+                    Debug.LogWarning($"[Valcoin] donate action failed: {err}");
                     return;
                 }
                 reply($"💛 Donate at  {r.donation_url}");
@@ -104,7 +104,7 @@ public static class TopDonorsFetcher
             (ok, r, err) =>
             {
                 if (!ok || r?.donors == null) { emit($"❌ Couldn't fetch leaderboard. ({err ?? "unknown"})"); return; }
-                if (r.donors.Length == 0)     { emit("🏆 No donors yet. Be the first — type /donate!"); return; }
+                if (r.donors.Length == 0)     { emit("🏆 No donors yet. Be the first — open the Donate tab!"); return; }
 
                 emit("🏆 Top donors:");
                 foreach (var e in r.donors)

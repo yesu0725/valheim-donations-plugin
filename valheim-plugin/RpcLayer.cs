@@ -3,16 +3,18 @@ using System.Collections;
 using UnityEngine;
 
 // Silent (non-chat) bridge between the in-game GUI panel and the server.
+// This is the ONLY way donation actions reach the server — there is no chat
+// or console command path (see docs/PLUGIN.md for why that was removed).
 //
 // Two RPCs:
-//   "vc_action"  — client → server. Asks the server to run a slash-command-
-//                  equivalent action ("/donate", "/buy donor_badge", etc.)
-//                  WITHOUT echoing it into the public chat log.
+//   "vc_action"  — client → server. Asks the server to run an action
+//                  ("donate", "buy:donor_badge", etc.) triggered by a button
+//                  in the F4 Codex or F8 panel, without touching public chat.
 //   "vc_panel"   — server → client. Pushes a free-form text blob the client
-//                  can display in its panel (used for /donate responses).
+//                  can display in its panel (used for donate-code responses).
 //
 // Why not just submit chat text from the panel? Because then the player's
-// donation code or buy command would appear in the public chat history,
+// donation code or buy action would appear in the public chat history,
 // visible to anyone scrolling back. Silent RPCs avoid that.
 public static class RpcLayer
 {

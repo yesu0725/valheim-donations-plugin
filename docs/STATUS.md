@@ -4,23 +4,46 @@ This file decays fastest of anything in `docs/` — check the actual source
 files before trusting it if it's been a while.
 
 - **Project phase:** 6 — backend is **live on Fly.io**, Ko-fi wired end-to-end,
-  plugin catalog now syncs to remote clients, first Thunderstore package built.
+  plugin catalog now syncs to remote clients, first Thunderstore package built,
+  chat/console commands removed in favor of UI-only.
 - **Backend version:** `0.5.0` (see [main.py](../backend/app/main.py)).
   **Deployed and reachable at `https://valheim-donations.fly.dev`** (see
   [DEPLOYMENT.md](DEPLOYMENT.md) for the live config).
-- **Plugin version:** `5.1.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.2.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
   Deployed to both the client (`Hearthbound Valheim - Test` profile) and the
   dedicated server, and packaged for Thunderstore (see
   [Thunderstore files/Valheim_Donations/](../Thunderstore%20files/Valheim_Donations/)).
 - **Backend tests:** 11 test files; README claims 39 tests passing. `pytest`
   is not installed in the base Python env — install
   `requirements-dev.txt` in a venv first (see [DEVELOPMENT.md](DEVELOPMENT.md)).
-- **Last code activity:** 2026-07-08 (Phase 2/3 plugin work + Fly.io go-live +
-  Thunderstore packaging).
+- **Last code activity:** 2026-07-09 (chat/console command removal, F8 Admin
+  tab, Fly.io go-live, Thunderstore packaging).
 - **Deployment target:** Fly.io, region `sin` (Singapore), 256 MB shared VM,
   1 GB persistent volume for SQLite. **Live** — see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Known discrepancies
+
+### Chat/console commands removed — BREAKING (2026-07-09)
+
+`ChatSlashPatch.cs` is deleted. All donation actions (`/donate`, `/coins`,
+`/shop`, `/buy`, `/gift`, `/topdonors`, `/title`, `/givecoins`,
+`/removecoins`) now exist **only** as F4 Codex / F8 panel buttons over the
+`vc_action` RPC — there is no chat or console fallback. Reason: the
+reflection-based `Chat.RPC_ChatMessage` hook was unreliable alongside other
+chat-patching mods on this server (root cause not fully diagnosed — `/donate`
+silently did nothing, no errors logged). A lightweight `ChatDecoration.cs`
+still prefixes chat with the donor badge/title cosmetic, but doesn't parse
+commands.
+
+**Consequence:** the plugin is now required **client-side**, not just
+server-side — a vanilla client can no longer use the donation system at all.
+On this server that's moot (ServerGuard already kicks vanilla clients), but
+it's a real behavior change for the public Thunderstore listing. See
+[SHOP.md](SHOP.md#no-chat-or-console-commands).
+
+New: an **Admin tab** in the F8 panel (give/remove balance) replaces the
+removed `/givecoins`/`/removecoins`, gated on a `whoami` RPC check against
+`valcoin_admins.yaml`.
 
 ### Remote/vanilla clients need the catalog broadcast to arrive — RESOLVED (2026-07-08)
 

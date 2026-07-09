@@ -1,8 +1,10 @@
 # Valheim Donations — Project Guide
 
-Two-part system that lets Valheim players (vanilla or modded) donate via Ko-fi /
+Two-part system that lets Valheim players donate via Ko-fi /
 PayPal / Patreon / PayMongo and get **Valcoins** credited in-game, redeemable in
-an in-game shop for perks.
+an in-game shop for perks. All donation actions happen through the F4 Codex / F8
+panel -- the plugin must be installed client-side to use the system at all
+(no chat/console commands; see docs/SHOP.md).
 
 ## Layout
 
@@ -17,11 +19,12 @@ valheim-donations/
 ## Architecture in one paragraph
 
 The plugin mints a short-lived **claim code** (`AB12-CD34`, 30-min TTL) when a
-player runs `/donate`, DMs the donor a portal URL, and polls
+player clicks Donate in the F4 Codex or F8 panel (the only input path — there
+are no chat/console commands), DMs the donor a portal URL, and polls
 `/api/grants/pending` every ~10s. The donor picks a provider in the portal;
 each webhook verifies its own signature, resolves the code → Steam64, and
 writes a `grants` row. The plugin applies grants, acks them, and updates a
-local balance cache. Shop purchases (`/buy`) and gifts (`/gift`) call atomic
+local balance cache. Shop purchases and gifts (Shop/Gift tabs) call atomic
 `/api/spend` and `/api/transfer` endpoints, idempotency-keyed so retries are
 safe. The backend owns the coin ledger; the plugin owns the perk/SKU effects.
 

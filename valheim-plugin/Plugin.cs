@@ -10,7 +10,7 @@ using HarmonyLib;
 // inherited BaseUnityPlugin.Config (a BepInEx ConfigFile) property.
 using PluginConfig = Config;
 
-[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.1.0")]
+[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.2.0")]
 public class Plugin : BaseUnityPlugin
 {
     public static HashSet<string> AdminSteamIDs = new HashSet<string>();
@@ -98,9 +98,8 @@ public class Plugin : BaseUnityPlugin
             File.WriteAllText(AdminConfigPath,
 @"# Valcoin Admins (Steam64 IDs)
 # ------------------------------------------------------------
-# Add Steam64 IDs here to grant admin permission for:
-#   /givecoins <playerName> <amount>
-#   /removecoins <playerName> <amount>
+# Add Steam64 IDs here to grant admin permission for the Admin tab in the
+# F8 quick panel (give/remove a player's Valcoin balance).
 #
 # Find your Steam64 at https://steamid.io
 # Restart the server after changes.

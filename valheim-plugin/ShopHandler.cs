@@ -1,8 +1,8 @@
 using System;
 using UnityEngine;
 
-// Orchestrates a /buy: validate locally, debit via backend (idempotent),
-// then apply the perk-side effect on success.
+// Orchestrates a shop purchase: validate locally, debit via backend
+// (idempotent), then apply the perk-side effect on success.
 //
 // Effects supported:
 //   grant_perk    — flips a passive flag in PerkManager
@@ -25,7 +25,7 @@ public static class ShopHandler
         if (string.IsNullOrEmpty(steam64)) { tell("⚠️ Couldn't resolve your Steam ID."); return; }
         if (!Config.Ready)                 { tell("⚠️ Shop is offline (backend not configured)."); return; }
         if (!Catalog.Items.TryGetValue(skuId, out var sku))
-        { tell($"⚠️ Unknown SKU: {skuId}. Type /shop for the list."); return; }
+        { tell($"⚠️ Unknown SKU: {skuId}. Check the Shop tab for the list."); return; }
 
         // Cheap local pre-check so we don't make a network call only to bounce.
         int local = CoinManager.GetBalance(steam64);
@@ -68,7 +68,7 @@ public static class ShopHandler
                     if (err != null && err.Contains("429"))
                         tell($"🗓️ Weekly limit reached for \"{sku.Name}\". {ExtractDetail(err)}".TrimEnd());
                     else if (err != null && err.Contains("402"))
-                        tell("💸 The server says you don't have enough Valcoins. Try /coins.");
+                        tell("💸 The server says you don't have enough Valcoins. Check your balance at the top of the panel.");
                     else
                         tell($"❌ Purchase failed. ({err ?? "unknown"})");
                     return;

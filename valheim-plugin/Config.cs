@@ -67,6 +67,6 @@ public static class Config
         }
 
         if (!Ready)
-            Debug.LogWarning("[Valcoin] Backend not configured; /donate and grant polling are disabled.");
+            Debug.LogWarning("[Valcoin] Backend not configured; donation actions and grant polling are disabled.");
     }
 }

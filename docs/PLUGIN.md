@@ -1,28 +1,32 @@
 # Plugin
 
 BepInEx server-side plugin that polls the donations backend and applies
-granted Valcoins to players. Works for vanilla AND modded clients — chat
-slash commands are intercepted server-side.
+granted Valcoins to players. **All donation actions go through the F4 Codex /
+F8 panel** — there are no chat-typed or console commands (removed; see
+[SHOP.md](SHOP.md#no-chat-or-console-commands)). The plugin must be installed
+client-side to use the donation system at all.
 
 ## Layout
 
 - [Plugin.cs](../valheim-plugin/Plugin.cs) — BepInEx entry, admin YAML, Harmony patch
 - [GrantPoller.cs](../valheim-plugin/GrantPoller.cs) — polls `/api/grants/pending`
+- [CatalogSync.cs](../valheim-plugin/CatalogSync.cs) — broadcasts the shop catalog to remote clients over RPC
 - [CoinManager.cs](../valheim-plugin/CoinManager.cs) — balance cache + applied-grant dedupe
-- [ShopHandler.cs](../valheim-plugin/ShopHandler.cs) — `/buy`, perk-effect dispatch
+- [ShopHandler.cs](../valheim-plugin/ShopHandler.cs) — purchase validation, perk-effect dispatch
 - [PerkManager.cs](../valheim-plugin/PerkManager.cs) — per-player perks/charges/title/home
-- [Catalog.cs](../valheim-plugin/Catalog.cs) — loads `valcoin_shop.yaml`
-- [Flows.cs](../valheim-plugin/Flows.cs) — `/donate`, `/coins`, `/topdonors`, etc.
-- [ChatSlashPatch.cs](../valheim-plugin/ChatSlashPatch.cs) — server-side chat hook
-  that intercepts slash commands from vanilla clients
-- [DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — client-side IMGUI quick panel (F8)
+- [Catalog.cs](../valheim-plugin/Catalog.cs) — loads `valcoin_shop.yaml`; serializes for `CatalogSync`
+- [Flows.cs](../valheim-plugin/Flows.cs) — donate / gift / leaderboard implementations, shared by the router
+- [ChatDecoration.cs](../valheim-plugin/ChatDecoration.cs) — passive donor-badge/chat-title
+  chat message prefix (cosmetic only — not a command)
+- [DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — client-side IMGUI quick panel (F8), incl. the Admin tab
 - [DonationCodex.cs](../valheim-plugin/DonationCodex.cs) — client-side IMGUI Donation Codex (F4); offline-resilient (Overview / Perks & Shop / Patrons / Donate)
 - [RpcLayer.cs](../valheim-plugin/RpcLayer.cs) + [UiActionRouter.cs](../valheim-plugin/UiActionRouter.cs)
-  — `vc_action` silent RPC for panel → server commands
+  — `vc_action` silent RPC for panel → server actions (the only input path)
 - [BackendClient.cs](../valheim-plugin/BackendClient.cs) — UnityWebRequest wrapper
 - [SteamIdResolver.cs](../valheim-plugin/SteamIdResolver.cs) — Steam64 + PlayFab support
+- [Utils.cs](../valheim-plugin/Utils.cs) — `SharedCoroutineRunner`, shared by the static handler classes
 
-For the user-facing command list and shop schema, see [SHOP.md](SHOP.md).
+For the user-facing panel layout and shop schema, see [SHOP.md](SHOP.md).
 
 ## Ecosystem shop extensions
 
@@ -42,10 +46,8 @@ For the user-facing command list and shop schema, see [SHOP.md](SHOP.md).
   enforces a per-player, per-SKU count within the current week (Monday 00:00
   UTC), returning **429** with a "resets in Nd Nh" detail. See [BACKEND.md](BACKEND.md).
 
-**Still proposed** (cosmetic / UI, not built):
+**Still proposed** (cosmetic, not built):
 
-- **F4 Donation Codex UI** — reuse the F8 `DonationPanel.cs` IMGUI approach;
-  adds a Top Patrons board (reads `/topdonors`).
 - **`companion_flair` / `lordslayer_title`** — cosmetic `grant_perk` perks (they
   already grant generically); the *rendering* lives in Lost Scrolls II /
   BiomeLords, and `lordslayer_title` should verify the player earned Lordslayer
@@ -67,13 +69,13 @@ The csproj expects these in `valheim-plugin/libs/`. Most come from Valheim's
 - `UnityEngine.CoreModule.dll`
 - **`UnityEngine.UnityWebRequestModule.dll`** ← needed for HTTPS polling. Copy
   from `valheim_Data/Managed/`.
-- **`UnityEngine.IMGUIModule.dll`** ← needed for the in-game panel (Phase 5).
+- **`UnityEngine.IMGUIModule.dll`** ← needed for the F4/F8 in-game panels.
   Same location.
-- **`UnityEngine.InputLegacyModule.dll`** ← needed for the F8 keybind. Same.
+- **`UnityEngine.InputLegacyModule.dll`** ← needed for the F8/F4 keybinds. Same.
 - `Newtonsoft.Json.dll`
 
 `YamlDotNet` and `Jotunn` are **no longer required** — admin YAML uses a
-built-in regex parser, and slash commands are server-side only. See
+built-in regex parser, and there's no chat-command parsing anymore either. See
 [STATUS.md](STATUS.md) for the build-artifact discrepancy this created.
 
 ## Build
@@ -116,25 +118,24 @@ editing.
 | `BepInEx/config/valcoin_data/perks.json` | per-player perks/charges/title/home |
 
 The backend's SQLite is the source of truth — the plugin's local balance
-cache only answers `/coins` instantly without a network round-trip.
+cache only answers panel/Codex balance queries instantly without a network
+round-trip.
 
 ## Vanilla-client compatibility
 
-All commands work for vanilla (un-modded) clients via the server-side
-`Chat.RPC_ChatMessage` patch. The F8 panel and the proposed F4 Donation Codex
-are quality-of-life extras for plugin-aware clients; vanilla clients use the
-chat commands. The proposed `grant_item` consumables spawn items server-side, so
-they work for vanilla clients too.
+**The plugin must be installed client-side to use the donation system at
+all.** All actions (donate/buy/gift/admin) route through the F4 Codex / F8
+panel's silent RPC — there is no chat or console command path (removed; see
+[SHOP.md](SHOP.md#no-chat-or-console-commands) for why). A truly vanilla
+client can connect but won't be able to donate, shop, or gift.
 
-> **Note:** the earlier `/sethome`, `/home`, and `/shout` commands (and their
-> `sethome` / `shout` perks) are **removed by design decision** — see
-> [SHOP.md](SHOP.md). The paragraph below is retained only until those code
-> paths are pruned.
+On a ServerGuard-locked server this is moot — every connecting player already
+runs the modpack, including this plugin — but it's a real requirement change
+for anyone deploying this mod standalone without ServerGuard.
 
-The old `/sethome` and `/home` commands worked best when the player also had the
-plugin installed client-side (teleport relied on a client-side call); vanilla
-clients got a server-side ZDO write fallback that usually worked but sometimes
-needed a brief reconnect to take effect.
+`grant_item` consumables still spawn items server-side at the buyer's feet
+(not written into a remote inventory directly), so *delivery* doesn't depend
+on client mods — only the purchase trigger does.
 
 ## Source of truth
 

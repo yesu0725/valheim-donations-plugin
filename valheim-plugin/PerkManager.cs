@@ -10,7 +10,7 @@ using UnityEngine;
 // Stores:
 //   - unlocked perks (passive flags like donor_badge, sethome)
 //   - charges of consumable perks (e.g. /shout)
-//   - chat title text (set via /title once chat_title is unlocked)
+//   - chat title text (set via the Gift tab's title editor once chat_title is unlocked)
 //   - saved home position + last home-teleport time (for /home cooldown)
 //
 public static class PerkManager

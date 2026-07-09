@@ -28,9 +28,15 @@ public class DonationPanel : MonoBehaviour
     private const int   PanelW = 520;
     private const int   PanelH = 480;
 
-    private enum Tab { Donate, Shop, Gift, Top }
+    private enum Tab { Donate, Shop, Gift, Top, Admin }
     private Tab _tab = Tab.Donate;
     private bool _open;
+
+    // Set from the server's reply to a "whoami" action (see UiActionRouter);
+    // the client has no other way to know the local Steam64 is in the admin
+    // list, since that list only lives server-side.
+    private bool _isAdmin;
+    private bool _askedWhoAmI;
 
     private KeyCode _toggleKey = KeyCode.F8;
 
@@ -107,7 +113,11 @@ public class DonationPanel : MonoBehaviour
     private void Toggle()
     {
         _open = !_open;
-        if (_open) RefreshStateSoon(force: true);
+        if (_open)
+        {
+            RefreshStateSoon(force: true);
+            if (!_askedWhoAmI) { RpcLayer.SendAction("whoami"); _askedWhoAmI = true; }
+        }
     }
 
     private void RefreshStateSoon(bool force = false)
@@ -238,12 +248,13 @@ public class DonationPanel : MonoBehaviour
 
         DrawHr();
 
-        // Tab strip.
+        // Tab strip. Admin only appears once the server has confirmed it.
         GUILayout.BeginHorizontal();
         TabButton("Donate", Tab.Donate);
         TabButton("Shop",   Tab.Shop);
         TabButton("Gift",   Tab.Gift);
         TabButton("Top",    Tab.Top);
+        if (_isAdmin) TabButton("Admin", Tab.Admin);
         GUILayout.EndHorizontal();
 
         DrawHr();
@@ -254,6 +265,7 @@ public class DonationPanel : MonoBehaviour
             case Tab.Shop:   DrawShop();   break;
             case Tab.Gift:   DrawGift();   break;
             case Tab.Top:    DrawTop();    break;
+            case Tab.Admin:  DrawAdmin();  break;
         }
 
         DrawHr();
@@ -376,6 +388,37 @@ public class DonationPanel : MonoBehaviour
         }
     }
 
+    private string _adminTarget = "", _adminAmount = "";
+
+    private void DrawAdmin()
+    {
+        GUILayout.Label("Manually adjust a player's Valcoin balance.", _label);
+        GUILayout.Space(4);
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Player:", _label, GUILayout.Width(50));
+        _adminTarget = GUILayout.TextField(_adminTarget ?? "", GUILayout.Width(200));
+        GUILayout.EndHorizontal();
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Amount:", _label, GUILayout.Width(50));
+        _adminAmount = GUILayout.TextField(_adminAmount ?? "", GUILayout.Width(80));
+        GUILayout.EndHorizontal();
+
+        GUILayout.Space(6);
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("✅ Give", _btn, GUILayout.Height(28))) SendAdminAdjust(give: true);
+        if (GUILayout.Button("❌ Remove", _btn, GUILayout.Height(28))) SendAdminAdjust(give: false);
+        GUILayout.EndHorizontal();
+    }
+
+    private void SendAdminAdjust(bool give)
+    {
+        if (string.IsNullOrWhiteSpace(_adminTarget) || string.IsNullOrWhiteSpace(_adminAmount))
+        { AddLog("⚠️ Fill in both fields."); return; }
+        string action = (give ? "admin_give:" : "admin_remove:") + $"{_adminTarget.Trim()}:{_adminAmount.Trim()}";
+        RpcLayer.SendAction(action);
+    }
+
     private void DrawTop()
     {
         GUILayout.Label("Lifetime donor leaderboard:", _label);
@@ -416,8 +459,15 @@ public class DonationPanel : MonoBehaviour
         if (PerkManager.Has(s, "companion_flair")) yield return "companion_flair";
     }
 
+    private const string AdminStatusPrefix = "__ADMIN__:";
+
     private void AddLog(string msg)
     {
+        if (msg != null && msg.StartsWith(AdminStatusPrefix))
+        {
+            _isAdmin = msg.Substring(AdminStatusPrefix.Length) == "true";
+            return;
+        }
         _log.Add(msg);
         if (_log.Count > LogCap) _log.RemoveAt(0);
         // An action almost always affects balance/state; cheaply refresh.
