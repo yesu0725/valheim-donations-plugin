@@ -1,8 +1,8 @@
 # Plugin
 
 BepInEx server-side plugin that polls the donations backend and applies
-granted Valcoins to players. **All donation actions go through the F4 Codex /
-F8 panel** — there are no chat-typed or console commands (removed; see
+granted Valcoins to players. **All donation actions go through the in-game
+panel (open with F4 or F8)** — there are no chat-typed or console commands (removed; see
 [SHOP.md](SHOP.md#no-chat-or-console-commands)). The plugin must be installed
 client-side to use the donation system at all.
 
@@ -18,8 +18,9 @@ client-side to use the donation system at all.
 - [Flows.cs](../valheim-plugin/Flows.cs) — donate / gift / leaderboard implementations, shared by the router
 - [ChatDecoration.cs](../valheim-plugin/ChatDecoration.cs) — passive donor-badge/chat-title
   chat message prefix (cosmetic only — not a command)
-- [DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — client-side IMGUI quick panel (F8), incl. the Admin tab
-- [DonationCodex.cs](../valheim-plugin/DonationCodex.cs) — client-side IMGUI Donation Codex (F4); offline-resilient (Overview / Perks & Shop / Patrons / Donate)
+- [DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — the single combined client-side
+  IMGUI panel (opens with F4 **or** F8); tabs: Donate / Shop / Gift / Patrons / Admin.
+  Offline-resilient; Donate tab has inline code + Copy + Open-portal + cooldown + Terms modal
 - [RpcLayer.cs](../valheim-plugin/RpcLayer.cs) + [UiActionRouter.cs](../valheim-plugin/UiActionRouter.cs)
   — `vc_action` silent RPC for panel → server actions (the only input path)
 - [BackendClient.cs](../valheim-plugin/BackendClient.cs) — UnityWebRequest wrapper
@@ -124,8 +125,8 @@ round-trip.
 ## Vanilla-client compatibility
 
 **The plugin must be installed client-side to use the donation system at
-all.** All actions (donate/buy/gift/admin) route through the F4 Codex / F8
-panel's silent RPC — there is no chat or console command path (removed; see
+all.** All actions (donate/buy/gift/admin) route through the in-game panel's
+(F4/F8) silent RPC — there is no chat or console command path (removed; see
 [SHOP.md](SHOP.md#no-chat-or-console-commands) for why). A truly vanilla
 client can connect but won't be able to donate, shop, or gift.
 

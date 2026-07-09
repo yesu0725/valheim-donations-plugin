@@ -22,29 +22,29 @@ public static class ShopHandler
 
     public static void Buy(string steam64, string skuId, TellFn tell, Action onSuccess = null)
     {
-        if (string.IsNullOrEmpty(steam64)) { tell("⚠️ Couldn't resolve your Steam ID."); return; }
-        if (!Config.Ready)                 { tell("⚠️ Shop is offline (backend not configured)."); return; }
+        if (string.IsNullOrEmpty(steam64)) { tell("Couldn't resolve your Steam ID."); return; }
+        if (!Config.Ready)                 { tell("Shop is offline (backend not configured)."); return; }
         if (!Catalog.Items.TryGetValue(skuId, out var sku))
-        { tell($"⚠️ Unknown SKU: {skuId}. Check the Shop tab for the list."); return; }
+        { tell($"Unknown SKU: {skuId}. Check the Shop tab for the list."); return; }
 
         // Cheap local pre-check so we don't make a network call only to bounce.
         int local = CoinManager.GetBalance(steam64);
         if (local < sku.Price)
-        { tell($"💸 Not enough Valcoins ({local} / {sku.Price})."); return; }
+        { tell($"Not enough Valcoins ({local} / {sku.Price})."); return; }
 
         // For grant_perk SKUs, refuse re-purchase if they already own it.
         if (sku.Effect == "grant_perk" && PerkManager.Has(steam64, sku.Perk))
-        { tell($"✅ You already own \"{sku.Name}\"."); return; }
+        { tell($"You already own \"{sku.Name}\"."); return; }
 
         // grant_item pre-checks BEFORE any coins are debited, so we never charge
         // a player we then can't deliver to.
         if (sku.Effect == "grant_item")
         {
             if (!string.IsNullOrEmpty(sku.RequiresBoss) && !BossGateSatisfied(sku.RequiresBoss))
-            { tell($"🔒 \"{sku.Name}\" unlocks after a later boss. Keep progressing!"); return; }
+            { tell($"\"{sku.Name}\" unlocks after a later boss. Keep progressing!"); return; }
 
             if (SteamIdResolver.ZdoFor(steam64) == null)
-            { tell("⚠️ Couldn't find your character to deliver items. Spawn in, then try again."); return; }
+            { tell("Couldn't find your character to deliver items. Spawn in, then try again."); return; }
         }
 
         // Don't truncate — Substring(0,32) was lopping off the GUID hex,
@@ -66,11 +66,11 @@ public static class ShopHandler
                 if (!ok || r == null)
                 {
                     if (err != null && err.Contains("429"))
-                        tell($"🗓️ Weekly limit reached for \"{sku.Name}\". {ExtractDetail(err)}".TrimEnd());
+                        tell($"Weekly limit reached for \"{sku.Name}\". {ExtractDetail(err)}".TrimEnd());
                     else if (err != null && err.Contains("402"))
-                        tell("💸 The server says you don't have enough Valcoins. Check your balance at the top of the panel.");
+                        tell("The server says you don't have enough Valcoins. Check your balance at the top of the panel.");
                     else
-                        tell($"❌ Purchase failed. ({err ?? "unknown"})");
+                        tell($"Purchase failed. ({err ?? "unknown"})");
                     return;
                 }
 
@@ -82,7 +82,7 @@ public static class ShopHandler
                 // — that would hand out free items / charges.
                 if (r.status == "duplicate")
                 {
-                    tell($"↩️ \"{sku.Name}\" was already processed. Balance: {r.balance}.");
+                    tell($"\"{sku.Name}\" was already processed. Balance: {r.balance}.");
                     onSuccess?.Invoke();
                     return;
                 }
@@ -99,25 +99,25 @@ public static class ShopHandler
         {
             case "grant_perk":
                 PerkManager.Grant(steam64, sku.Perk);
-                tell($"🎉 Purchased \"{sku.Name}\" — perk \"{sku.Perk}\" unlocked!");
+                tell($"Purchased \"{sku.Name}\" - perk \"{sku.Perk}\" unlocked!");
                 break;
 
             case "add_charges":
                 PerkManager.AddCharges(steam64, sku.Perk, sku.Charges);
-                tell($"🎉 Purchased \"{sku.Name}\" — +{sku.Charges} {sku.Perk} charge(s).");
+                tell($"Purchased \"{sku.Name}\" - +{sku.Charges} {sku.Perk} charge(s).");
                 break;
 
             case "grant_item":
                 int delivered = GrantItems(steam64, sku.Item);
                 if (delivered > 0)
-                    tell($"🎁 Purchased \"{sku.Name}\" — {delivered} item stack(s) dropped at your feet.");
+                    tell($"Purchased \"{sku.Name}\" - {delivered} item stack(s) dropped at your feet.");
                 else
-                    tell($"⚠️ \"{sku.Name}\" was charged but no items could be spawned (bad prefab id?). Tell an admin.");
+                    tell($"\"{sku.Name}\" was charged but no items could be spawned (bad prefab id?). Tell an admin.");
                 break;
 
             default:
                 Debug.LogWarning($"[Valcoin] Unknown effect type \"{sku.Effect}\" for SKU {sku.Id}");
-                tell($"⚠️ \"{sku.Name}\" was charged but the effect couldn't be applied. Tell an admin.");
+                tell($"\"{sku.Name}\" was charged but the effect couldn't be applied. Tell an admin.");
                 break;
         }
     }

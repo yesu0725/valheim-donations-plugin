@@ -10,7 +10,7 @@ using HarmonyLib;
 // inherited BaseUnityPlugin.Config (a BepInEx ConfigFile) property.
 using PluginConfig = Config;
 
-[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.2.0")]
+[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.3.0")]
 public class Plugin : BaseUnityPlugin
 {
     public static HashSet<string> AdminSteamIDs = new HashSet<string>();
@@ -75,15 +75,11 @@ public class Plugin : BaseUnityPlugin
         while (ZNet.instance == null) yield return null;
         if (ZNet.instance.IsServer() && ZNet.instance.IsDedicated()) yield break;
 
+        // Single combined donation panel — opens with either F8 or F4 (both
+        // keys point at this one panel now; see DonationPanel).
         var go = new GameObject("ValcoinDonationPanel");
         go.AddComponent<DonationPanel>();
         DontDestroyOnLoad(go);
-
-        // F4 Donation Codex — the browsable, offline-resilient home for the
-        // donation system. Sits alongside the F8 quick panel.
-        var codex = new GameObject("ValcoinDonationCodex");
-        codex.AddComponent<DonationCodex>();
-        DontDestroyOnLoad(codex);
     }
 
     // --- Admin YAML --------------------------------------------------------

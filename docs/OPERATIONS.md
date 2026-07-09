@@ -50,7 +50,7 @@ poll cycle reconciles it.
 | Buying a food/mead SKU is refused | The SKU's `requires_boss` gate isn't satisfied — the player/world hasn't defeated the gating boss yet. |
 | Coins debited but consumable not received | A `grant_item` SKU with a **wrong prefab id** (e.g. an unverified Ashlands food) charges and gives nothing. Verify prefab ids against your Valheim version. |
 | *(removed)* `/sethome` / `/home` / `/shout` | These commands + their perks were removed by design decision — see [SHOP.md](../docs/SHOP.md). |
-| *(removed)* all chat/console commands | `/donate`, `/buy`, `/gift`, `/coins`, `/topdonors`, `/title`, `/givecoins`, `/removecoins` are all gone — everything is F4 Codex / F8 panel only now. See [SHOP.md](../docs/SHOP.md#no-chat-or-console-commands). |
+| *(removed)* all chat/console commands | `/donate`, `/buy`, `/gift`, `/coins`, `/topdonors`, `/title`, `/givecoins`, `/removecoins` are all gone — everything is the in-game panel (F4/F8) only now. See [SHOP.md](../docs/SHOP.md#no-chat-or-console-commands). |
 
 ## Verifying a change end-to-end
 

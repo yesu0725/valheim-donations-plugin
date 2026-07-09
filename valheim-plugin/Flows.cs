@@ -15,12 +15,16 @@ public static class DonateFlow
         public int    ttl_minutes;
     }
 
+    // Reply protocol (consumed by DonationPanel.AddLog):
+    //   "__DONATE__:<code>|<url>|<ttlMinutes>"  on success
+    //   "__DONATE_ERR__:<message>"              on failure
+    // The panel renders the code inline with Copy / Open-portal buttons rather
+    // than dumping it into a message log.
     public static void Run(string steam64, string senderName, Action<string> reply)
     {
-        if (string.IsNullOrEmpty(steam64)) { reply("⚠️ Couldn't resolve your Steam ID."); return; }
-        if (!Config.Ready) { reply("⚠️ Donations aren't configured on this server."); return; }
+        if (string.IsNullOrEmpty(steam64)) { reply("__DONATE_ERR__:Couldn't resolve your Steam ID."); return; }
+        if (!Config.Ready) { reply("__DONATE_ERR__:Donations aren't set up on this server yet."); return; }
 
-        reply("⌛ Generating your donation code...");
         SharedCoroutineRunner.Instance.StartCoroutine(BackendClient.Post<ClaimResp>(
             "/api/claim",
             new { steam64, name = senderName },
@@ -28,12 +32,11 @@ public static class DonateFlow
             {
                 if (!ok || r == null)
                 {
-                    reply("❌ Couldn't reach the donations service. Try again later.");
+                    reply("__DONATE_ERR__:Couldn't reach the donation service. Please try again.");
                     Debug.LogWarning($"[Valcoin] donate action failed: {err}");
                     return;
                 }
-                reply($"💛 Donate at  {r.donation_url}");
-                reply($"   Enter code:  {r.code}   (expires in {r.ttl_minutes} min)");
+                reply($"__DONATE__:{r.code}|{r.donation_url}|{r.ttl_minutes}");
             }));
     }
 }
@@ -44,17 +47,17 @@ public static class GiftFlow
 
     public static void Run(string fromSteam64, string fromName, string toName, int amount, Action<string> reply)
     {
-        if (string.IsNullOrEmpty(fromSteam64)) { reply("⚠️ Couldn't resolve your Steam ID."); return; }
-        if (string.IsNullOrEmpty(toName))      { reply("⚠️ Specify a recipient."); return; }
-        if (amount <= 0)                       { reply("⚠️ Amount must be positive."); return; }
+        if (string.IsNullOrEmpty(fromSteam64)) { reply("Couldn't resolve your Steam ID."); return; }
+        if (string.IsNullOrEmpty(toName))      { reply("Specify a recipient."); return; }
+        if (amount <= 0)                       { reply("Amount must be positive."); return; }
 
         if (!ResolveTargetByName(toName, out var toSteam64))
-        { reply($"⚠️ Player \"{toName}\" not found or no Steam ID."); return; }
+        { reply($"Player \"{toName}\" not found or no Steam ID."); return; }
 
-        if (toSteam64 == fromSteam64) { reply("⚠️ You can't gift yourself."); return; }
+        if (toSteam64 == fromSteam64) { reply("You can't gift yourself."); return; }
 
         int bal = CoinManager.GetBalance(fromSteam64);
-        if (bal < amount) { reply($"💸 Not enough Valcoins ({bal} / {amount})."); return; }
+        if (bal < amount) { reply($"Not enough Valcoins ({bal} / {amount})."); return; }
 
         var key = $"gift-{Guid.NewGuid():N}";
         SharedCoroutineRunner.Instance.StartCoroutine(BackendClient.Post<TransferResp>(
@@ -69,9 +72,9 @@ public static class GiftFlow
             },
             (ok, r, err) =>
             {
-                if (!ok || r == null) { reply($"❌ Gift failed. ({err ?? "unknown"})"); return; }
+                if (!ok || r == null) { reply($"Gift failed. ({err ?? "unknown"})"); return; }
                 CoinManager.SetBalance(fromSteam64, r.balance);
-                reply($"🎁 Sent {amount} Valcoins to {toName}.  Your balance: {r.balance}");
+                reply($"Sent {amount} Valcoins to {toName}. Your balance: {r.balance}");
             }));
     }
 
@@ -103,12 +106,12 @@ public static class TopDonorsFetcher
             $"/api/leaderboard/top?limit={limit}",
             (ok, r, err) =>
             {
-                if (!ok || r?.donors == null) { emit($"❌ Couldn't fetch leaderboard. ({err ?? "unknown"})"); return; }
-                if (r.donors.Length == 0)     { emit("🏆 No donors yet. Be the first — open the Donate tab!"); return; }
+                if (!ok || r?.donors == null) { emit($"Couldn't fetch leaderboard. ({err ?? "unknown"})"); return; }
+                if (r.donors.Length == 0)     { emit("No donors yet. Be the first - open the Donate tab!"); return; }
 
-                emit("🏆 Top donors:");
+                emit("Top donors:");
                 foreach (var e in r.donors)
-                    emit($"  {e.rank}. {e.name ?? "Anonymous"}  —  {e.total_coins} coins");
+                    emit($"  {e.rank}. {e.name ?? "Anonymous"} - {e.total_coins} coins");
             }));
     }
 }

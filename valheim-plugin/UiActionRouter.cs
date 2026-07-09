@@ -58,28 +58,28 @@ public static class UiActionRouter
 
     private static void DoAdminAdjust(string callerSteam64, string rest, Action<string> reply, bool give)
     {
-        if (!IsAdmin(callerSteam64)) { reply("🚫 You are not authorized."); return; }
+        if (!IsAdmin(callerSteam64)) { reply("You are not authorized."); return; }
 
         var parts = rest.Split(new[] { ':' }, 2);
         if (parts.Length != 2 || !int.TryParse(parts[1].Trim(), out int amount) || amount <= 0)
-        { reply("⚠️ Bad amount."); return; }
+        { reply("Bad amount."); return; }
 
         string targetName = parts[0].Trim();
         if (!ResolveTargetByName(targetName, out var targetSteam64, out var targetPlayer))
-        { reply($"⚠️ Player \"{targetName}\" not found or no Steam ID."); return; }
+        { reply($"Player \"{targetName}\" not found or no Steam ID."); return; }
 
         if (give)
         {
             CoinManager.AddCoins(targetSteam64, amount);
-            reply($"✅ Gave {amount} Valcoins to {targetName}.");
-            targetPlayer?.Message(MessageHud.MessageType.TopLeft, $"🎁 +{amount} Valcoins from admin!");
+            reply($"Gave {amount} Valcoins to {targetName}.");
+            targetPlayer?.Message(MessageHud.MessageType.TopLeft, $"+{amount} Valcoins from admin!");
         }
         else
         {
             int newBal = Math.Max(0, CoinManager.GetBalance(targetSteam64) - amount);
             CoinManager.SetBalance(targetSteam64, newBal);
-            reply($"✅ Removed {amount} from {targetName} (new balance: {newBal}).");
-            targetPlayer?.Message(MessageHud.MessageType.TopLeft, $"❌ {amount} Valcoins removed by admin.");
+            reply($"Removed {amount} from {targetName} (new balance: {newBal}).");
+            targetPlayer?.Message(MessageHud.MessageType.TopLeft, $"{amount} Valcoins removed by admin.");
         }
     }
 
@@ -106,27 +106,27 @@ public static class UiActionRouter
     {
         // Expected: "<playerName>:<amount>"
         var parts = rest.Split(new[] { ':' }, 2);
-        if (parts.Length != 2) { reply("⚠️ Bad gift format."); return; }
+        if (parts.Length != 2) { reply("Bad gift format."); return; }
         if (!int.TryParse(parts[1].Trim(), out int amount) || amount <= 0)
-        { reply("⚠️ Amount must be a positive number."); return; }
+        { reply("Amount must be a positive number."); return; }
 
         GiftFlow.Run(fromSteam64, fromName, parts[0].Trim(), amount, reply);
     }
 
     private static void DoTitle(string steam64, string rest, Action<string> reply)
     {
-        if (string.IsNullOrEmpty(steam64)) { reply("⚠️ Couldn't resolve your Steam ID."); return; }
+        if (string.IsNullOrEmpty(steam64)) { reply("Couldn't resolve your Steam ID."); return; }
         if (!PerkManager.Has(steam64, "chat_title"))
-        { reply("🔒 You need the \"chat_title\" perk. Buy it from the shop tab."); return; }
+        { reply("You need the \"chat_title\" perk. Buy it from the Shop tab."); return; }
 
         if (rest.Equals("clear", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(rest))
-        { PerkManager.SetTitle(steam64, null); reply("✅ Title cleared."); return; }
+        { PerkManager.SetTitle(steam64, null); reply("Title cleared."); return; }
 
-        if (rest.Length > 16) { reply("⚠️ 16 characters or fewer."); return; }
+        if (rest.Length > 16) { reply("16 characters or fewer."); return; }
         if (!System.Text.RegularExpressions.Regex.IsMatch(rest, @"^[\w \-'\.!?]+$"))
-        { reply("⚠️ Letters, numbers and basic punctuation only."); return; }
+        { reply("Letters, numbers and basic punctuation only."); return; }
 
         PerkManager.SetTitle(steam64, rest);
-        reply($"✅ Title set to [{rest}].");
+        reply($"Title set to [{rest}].");
     }
 }

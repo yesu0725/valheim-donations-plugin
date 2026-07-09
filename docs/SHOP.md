@@ -9,8 +9,8 @@ For the underlying code, see [PLUGIN.md](PLUGIN.md).
 
 ## No chat or console commands
 
-**All donation actions go through the F4 Codex or F8 panel — there is no
-chat-typed or console command path.** This was a deliberate removal (see
+**All donation actions go through the in-game panel (open it with F4 or F8) —
+there is no chat-typed or console command path.** This was a deliberate removal (see
 [STATUS.md](STATUS.md)): the reflection-based `Chat.RPC_ChatMessage` hook
 proved unreliable on a server running several other mods that also patch
 chat, and the UI panels already covered the same actions over a silent RPC.
@@ -26,46 +26,36 @@ A lightweight `ChatDecorationPatch` still runs server-side — it only prefixes
 a player's normal chat messages with their donor badge (⭐) / chat title, if
 they own those perks. It doesn't parse or intercept commands.
 
-## Donation Codex (F4) ✅
+## The in-game panel (F4 or F8) ✅
 
-A dedicated **donations-only** Codex panel — separate from ServerGuide's F3
-guide Codex — opened with **F4** (configurable via `codex_toggle_key`). Built as
-[DonationCodex.cs](../valheim-plugin/DonationCodex.cs). It is **fully navigable
-offline** (before the backend exists): the shop catalog and owned perks render
-from local data, while balance / live patron board / purchasing show an
-"activates when online" state and light up automatically once the operator
-connects the backend — no client update needed. Sections — Overview · Perks &
-Shop · Patrons · Donate.
-
-- **How it works** — Valcoins, the claim-code flow, and a pointer to the F8
-  panel for buy/gift/admin actions.
-- **Perks** — the current cosmetic + consumable catalog with prices and any
-  **weekly limits remaining**.
-- **Top Patrons** — a leaderboard section (lifetime top donors), refreshed on
-  open.
-
-## In-game UI panel (F8) ✅
-
-Press **F8** (configurable via `ui_toggle_key`) to open the action panel:
+There is **one** donation panel, opened with **either** the F8 key
+(`ui_toggle_key`) or the F4 key (`codex_toggle_key`) — both point at the same
+panel, built as [DonationPanel.cs](../valheim-plugin/DonationPanel.cs). It is
+**fully navigable offline** (before the backend exists): the shop catalog and
+owned perks render from local data, while balance / live patron board /
+purchasing show an "activates when online" state and light up automatically
+once the operator connects the backend — no client update needed.
 
 ```
-┌─── Valheim Donations ──────── [X] ┐
-│ Balance: 1500 c                   │
-│ Perks: donor_badge, companion_flair│
-│ [Donate] [Shop] [Gift] [Top] [Admin]│  <- Admin only shows for admins
-│ ───────────────────────────────── │
-│ < per-tab content >               │
-│ ───────────────────────────────── │
-│ Messages (server replies)         │
-└───────────────────────────────────┘
+┌─── Valheim Donations ──────  Live  [X] ┐
+│ Balance: 1500 Valcoins                 │
+│ Perks: donor_badge, companion_flair    │
+│ [Donate] [Shop] [Gift] [Patrons] [Admin]│  <- Admin only shows for admins
+│ ────────────────────────────────────── │
+│ < per-tab content >                    │
+└────────────────────────────────────────┘
 ```
 
-- **Donate tab** — one button. Calls the backend, displays your code + URL.
+- **Donate tab** — clear step-by-step instructions, a high-contrast
+  "Get my donation code" button (30s anti-spam cooldown), the code shown
+  **inline** with a **Copy code** button and an **Open donation portal** button
+  (launches the OS default browser via `Application.OpenURL`), and a
+  **Terms of Use** link that opens an in-game modal.
 - **Shop tab** — scrollable SKU list with "Buy" buttons; shows owned/charges and
-  (for `grant_item` SKUs) the weekly cap remaining per row.
+  (for `grant_item` SKUs) the weekly cap + boss gate per row.
 - **Gift tab** — recipient + amount fields, "Send gift" button. Also exposes the
   chat-title editor when you own the `chat_title` perk.
-- **Top tab** — leaderboard of lifetime donors.
+- **Patrons tab** — leaderboard of lifetime donors.
 - **Admin tab** (admins only) — give/remove a player's Valcoin balance
   manually. Only appears after the server confirms (via a `whoami` RPC
   round-trip) that the local Steam64 is in `valcoin_admins.yaml`.
@@ -74,6 +64,9 @@ The panel auto-closes when you open inventory, map, or pause menu. Sends
 every action via a silent `vc_action` RPC so nothing appears in public chat.
 The plugin must be installed client-side to see this panel at all — see the
 [No chat or console commands](#no-chat-or-console-commands) section above.
+
+> **No emoji in the UI.** Valheim's IMGUI font renders emoji as blank squares,
+> so the panel and every server reply string use plain text only.
 
 ## Shop catalog
 
@@ -168,7 +161,7 @@ discoverable without nagging players.
 
 | Approach | Status | Annoyance | Notes |
 |---|---|---|---|
-| **F4 Donation Codex** | ✅ | none | The browsable, opt-in home for economy, perks, and Top Patrons. |
+| **In-game panel (F4/F8)** | ✅ | none | The browsable, opt-in home for donating, the shop, gifting, and Top Patrons. |
 | **One-time HUD on join** | Built, **default ON** | very low | Single TopLeft line, 5s after spawn, points at F8/F4. Toggle via `welcome_message_enabled`; customise via `welcome_message` in `valcoin_config.json`. |
 | **Donor ⭐ badge in chat** | Built | none | Pure passive social proof — donors show off by chatting. |
 | **Top Patrons leaderboard** | Built | none | Opt-in: open the Top tab (F8) or Patrons section (F4). |
@@ -191,7 +184,6 @@ See [ecosystem/donation-hooks.md](ecosystem/donation-hooks.md) for the full plan
 - [valheim-plugin/Flows.cs](../valheim-plugin/Flows.cs) — donate/gift/leaderboard implementations, shared by the router
 - [valheim-plugin/ShopHandler.cs](../valheim-plugin/ShopHandler.cs) — `ApplyEffect` dispatch (add `grant_item` here)
 - [valheim-plugin/Catalog.cs](../valheim-plugin/Catalog.cs) — YAML loader (add `item` / `weekly_cap` / `requires_boss`)
-- [valheim-plugin/DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — F8 panel
-- [valheim-plugin/DonationCodex.cs](../valheim-plugin/DonationCodex.cs) — F4 Codex
+- [valheim-plugin/DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — the single combined F4/F8 panel
 - [valheim-plugin/ChatDecoration.cs](../valheim-plugin/ChatDecoration.cs) — passive badge/title chat prefix (not a command)
 - [valheim-plugin/examples/valcoin_shop.example.yaml](../valheim-plugin/examples/valcoin_shop.example.yaml) — proposed catalog

@@ -13,9 +13,8 @@ using HarmonyLib;
 //   * PlayerController.TakeInput(bool) gates movement + mouse-look.
 public static class DonationUiState
 {
-    public static bool CodexOpen;
     public static bool PanelOpen;
-    public static bool AnyOpen => CodexOpen || PanelOpen;
+    public static bool AnyOpen => PanelOpen;
 
     // GameCamera.m_mouseCapture is non-public in the raw assembly this plugin
     // references, so we poke it via cached reflection. Setting it false makes

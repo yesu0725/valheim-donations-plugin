@@ -9,19 +9,32 @@ files before trusting it if it's been a while.
 - **Backend version:** `0.5.0` (see [main.py](../backend/app/main.py)).
   **Deployed and reachable at `https://valheim-donations.fly.dev`** (see
   [DEPLOYMENT.md](DEPLOYMENT.md) for the live config).
-- **Plugin version:** `5.2.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.3.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
   Deployed to both the client (`Hearthbound Valheim - Test` profile) and the
   dedicated server, and packaged for Thunderstore (see
   [Thunderstore files/Valheim_Donations/](../Thunderstore%20files/Valheim_Donations/)).
 - **Backend tests:** 11 test files; README claims 39 tests passing. `pytest`
   is not installed in the base Python env — install
   `requirements-dev.txt` in a venv first (see [DEVELOPMENT.md](DEVELOPMENT.md)).
-- **Last code activity:** 2026-07-09 (chat/console command removal, F8 Admin
-  tab, Fly.io go-live, Thunderstore packaging).
+- **Last code activity:** 2026-07-09 (merged F4 Codex + F8 panel into one
+  combined panel, reworked Donate tab with inline code/copy/portal/cooldown/
+  terms modal, purged all emoji, chat/console command removal, Fly.io go-live).
 - **Deployment target:** Fly.io, region `sin` (Singapore), 256 MB shared VM,
   1 GB persistent volume for SQLite. **Live** — see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Known discrepancies
+
+### F4 Codex + F8 panel merged into one panel (2026-07-09)
+
+`DonationCodex.cs` is deleted; `DonationPanel.cs` is now the single combined
+panel, opened by **either** the F8 key (`ui_toggle_key`) or the F4 key
+(`codex_toggle_key`). Tabs: Donate, Shop, Gift, Patrons, Admin. The Donate
+tab shows the code inline (Copy button + Open-portal button via
+`Application.OpenURL`), enforces a 30s client-side cooldown, and has a Terms
+of Use modal. All emoji were removed from the UI and every server reply
+string — Valheim's IMGUI font renders emoji as blank squares. Donate replies
+now use a structured `__DONATE__:code|url|ttl` / `__DONATE_ERR__:msg` wire
+format (see `Flows.cs` / `DonationPanel.OnServerMessage`).
 
 ### Chat/console commands removed — BREAKING (2026-07-09)
 
