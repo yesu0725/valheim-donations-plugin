@@ -164,16 +164,57 @@ public class DonationPanel : MonoBehaviour
             });
     }
 
+    private string _cachedSteam64;
+
+    // Resolve THIS client's own Steam64. SteamIdResolver only handles remote
+    // peers (from their sockets); the local player has no peer entry, so we go
+    // straight to Steamworks. Cached once resolved so we don't reflect every
+    // refresh. Steamworks is available even at the main menu on a Steam client.
     private string ResolveLocalSteam64()
     {
+        if (!string.IsNullOrEmpty(_cachedSteam64)) return _cachedSteam64;
+
+        const System.Reflection.BindingFlags PubStatic =
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
+
+        // 1) Steamworks.NET — the canonical source of the local Steam64.
+        //    We scan loaded assemblies rather than guess the assembly name.
+        try
+        {
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type t;
+                try { t = asm.GetType("Steamworks.SteamUser"); } catch { continue; }
+                if (t == null) continue;
+
+                var cid = t.GetMethod("GetSteamID", PubStatic)?.Invoke(null, null);
+                var raw = cid?.GetType().GetField("m_SteamID")?.GetValue(cid)?.ToString();
+                if (!string.IsNullOrEmpty(raw) && raw.Length == 17 && raw.StartsWith("7656119"))
+                {
+                    _cachedSteam64 = raw;
+                    Debug.Log($"[Valcoin] Local Steam64 resolved via Steamworks: {raw}");
+                    return raw;
+                }
+            }
+        }
+        catch (Exception ex) { Debug.LogWarning("[Valcoin] Steamworks id lookup failed: " + ex.Message); }
+
+        // 2) Fallback: the older ZSteamMatchmaking.GetSteamID path.
         try
         {
             var t = Type.GetType("ZSteamMatchmaking, assembly_valheim");
-            var inst = t?.GetField("instance", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.GetValue(null);
-            var id = inst?.GetType().GetMethod("GetSteamID")?.Invoke(inst, null);
-            return id?.ToString();
+            var inst = t?.GetField("instance", PubStatic)?.GetValue(null);
+            var id = inst?.GetType().GetMethod("GetSteamID")?.Invoke(inst, null)?.ToString();
+            if (!string.IsNullOrEmpty(id) && id.Length == 17 && id.StartsWith("7656119"))
+            {
+                _cachedSteam64 = id;
+                Debug.Log($"[Valcoin] Local Steam64 resolved via ZSteamMatchmaking: {id}");
+                return id;
+            }
         }
-        catch { return null; }
+        catch { }
+
+        return null;
     }
 
     // ─── server messages ────────────────────────────────────────────────────
