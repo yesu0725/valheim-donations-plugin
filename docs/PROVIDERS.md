@@ -27,7 +27,8 @@ From [backend/.env.example](../backend/.env.example):
 | `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | REST app credentials |
 | `PAYPAL_WEBHOOK_ID` | Used to verify webhook signatures |
 | `PAYPAL_SANDBOX` | `true` while testing |
-| `PAYPAL_ME_USERNAME` | For portal deep-links (`paypal.me/<username>`) |
+| `PAYPAL_BUSINESS_EMAIL` | Receives funds; the portal builds a donate link with the claim code in `custom` so donations auto-credit |
+| `PAYPAL_ME_USERNAME` | Optional fallback link (`paypal.me/<username>`) — manual credit only |
 
 ### Patreon
 | Variable | Purpose |
@@ -63,10 +64,11 @@ From [backend/.env.example](../backend/.env.example):
    classic donations).
 3. Copy `Client ID`, `Secret`, and `Webhook ID` into env. Toggle
    `PAYPAL_SANDBOX=true` while testing.
-4. Set `PAYPAL_ME_USERNAME` for the portal's PayPal link. **Donors paste the
-   code manually into PayPal's note field** — paypal.me URLs don't support
-   note prefilling. The portal makes the code prominently visible with a
-   Copy button to ease this.
+4. Set `PAYPAL_BUSINESS_EMAIL` to the account that receives funds. The portal
+   builds a `paypal.com/donate/?business=…&custom=<code>` link — the `custom`
+   value comes back as `resource.custom` on the webhook, so donations
+   **auto-credit** with no manual step. (`PAYPAL_ME_USERNAME` is only a fallback
+   when no business email is set, and requires manual crediting.)
 
 ## Patreon
 1. Creator portal → **Settings → Webhooks** → add `/webhooks/patreon`.
