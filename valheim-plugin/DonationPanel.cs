@@ -285,11 +285,14 @@ public class DonationPanel : MonoBehaviour
         _btnDim.normal.textColor = new Color(0.5f, 0.48f, 0.42f);
 
         // Prominent, high-contrast primary action (the donate button).
-        _btnPrimary = new GUIStyle(GUI.skin.button) { fontSize = 15, fontStyle = FontStyle.Bold };
-        _btnPrimary.padding = new RectOffset(12, 12, 10, 10);
-        _btnPrimary.normal.background = SolidTex(new Color(0.82f, 0.62f, 0.18f, 1f));
-        _btnPrimary.normal.textColor = new Color(0.1f, 0.07f, 0.02f);   // near-black on gold, high contrast
-        _btnPrimary.hover.background = SolidTex(new Color(0.92f, 0.72f, 0.24f, 1f));
+        // Vertical padding kept modest so the label sits centered at a normal
+        // button height instead of floating in an oversized gold slab.
+        _btnPrimary = new GUIStyle(GUI.skin.button) { fontSize = 14, fontStyle = FontStyle.Bold };
+        _btnPrimary.alignment = TextAnchor.MiddleCenter;
+        _btnPrimary.padding = new RectOffset(12, 12, 6, 6);
+        _btnPrimary.normal.background = SolidTex(new Color(0.78f, 0.6f, 0.22f, 1f));
+        _btnPrimary.normal.textColor = new Color(0.12f, 0.08f, 0.02f);   // near-black on gold, high contrast
+        _btnPrimary.hover.background = SolidTex(new Color(0.9f, 0.71f, 0.28f, 1f));
         _btnPrimary.hover.textColor = Color.black;
 
         _line = new GUIStyle();
@@ -444,9 +447,9 @@ public class DonationPanel : MonoBehaviour
         if (onCooldown)
         {
             int wait = Mathf.CeilToInt(_donateCooldownUntil - now);
-            GUILayout.Label($"Please wait {wait}s before requesting another code", _btnDim, GUILayout.Height(42));
+            GUILayout.Label($"Please wait {wait}s before requesting another code", _btnDim, GUILayout.Height(38));
         }
-        else if (GUILayout.Button("Get my donation code", _btnPrimary, GUILayout.Height(42)))
+        else if (GUILayout.Button("Get my donation code", _btnPrimary, GUILayout.Height(38)))
         {
             _donateCooldownUntil = now + DonateCooldownSeconds;
             _donateStatus = "Requesting your code...";
@@ -469,9 +472,9 @@ public class DonationPanel : MonoBehaviour
             GUILayout.Box(_donateCode, _codeBox, GUILayout.Height(46), GUILayout.ExpandWidth(true));
 
             GUILayout.Space(6);
-            // Stacked full-width buttons so neither label clips. Heights are
-            // generous enough for each style's font + padding.
-            if (GUILayout.Button("Copy code", _btn, GUILayout.Height(34)))
+            // Stacked full-width buttons, matched heights so they read as a
+            // balanced pair (Copy = secondary, Open = gold primary).
+            if (GUILayout.Button("Copy code", _btn, GUILayout.Height(36)))
             {
                 GUIUtility.systemCopyBuffer = _donateCode;
                 _copiedFlashUntil = now + 2f;
@@ -479,7 +482,7 @@ public class DonationPanel : MonoBehaviour
             if (!string.IsNullOrEmpty(_donateUrl))
             {
                 GUILayout.Space(4);
-                if (GUILayout.Button("Open donation portal", _btnPrimary, GUILayout.Height(42)))
+                if (GUILayout.Button("Open donation portal", _btnPrimary, GUILayout.Height(36)))
                     Application.OpenURL(_donateUrl);
             }
 
@@ -707,7 +710,7 @@ public class DonationPanel : MonoBehaviour
         GUILayout.EndScrollView();
 
         GUILayout.Space(6);
-        if (GUILayout.Button("I understand", _btnPrimary, GUILayout.Height(42))) _showTerms = false;
+        if (GUILayout.Button("I understand", _btnPrimary, GUILayout.Height(38))) _showTerms = false;
 
         GUILayout.EndArea();
     }
