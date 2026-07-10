@@ -1,7 +1,8 @@
-# Build the plugin and deploy the DLL to BOTH destinations (client + server).
+# Build the plugin and deploy the DLL to all destinations (two client
+# r2modman profiles + the dedicated server).
 # Deploys into a Thunderstore-manager-style subfolder
 # (BepInEx/plugins/TaegukGaming-Valheim_Donations/), matching how every other
-# mod on this server/profile is organized and how the Thunderstore package
+# mod on these profiles/server is organized and how the Thunderstore package
 # itself unpacks — not a flat file directly in BepInEx/plugins.
 #
 # Usage:  pwsh ./deploy.ps1        (from valheim-plugin/)
@@ -12,8 +13,13 @@ $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dll  = Join-Path $here 'bin\Release\ValheimDonationSystem.dll'
 
+# Both client profiles are kept in lockstep: "Hearthbound Valheim" is the live
+# profile the server-connected client runs; "Hearthbound Valheim - Test" is the
+# testing profile. Any missing folder is skipped, so this is safe if one
+# profile doesn't exist on a given machine.
 $pluginFolders = @(
   'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Valheim\BepInEx\plugins',
+  'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Valheim - Test\BepInEx\plugins',
   'C:\Program Files (x86)\Steam\steamapps\common\Valheim dedicated server\BepInEx\plugins'
 )
 $subfolderName = 'TaegukGaming-Valheim_Donations'
