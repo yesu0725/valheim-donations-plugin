@@ -444,9 +444,9 @@ public class DonationPanel : MonoBehaviour
         if (onCooldown)
         {
             int wait = Mathf.CeilToInt(_donateCooldownUntil - now);
-            GUILayout.Label($"Please wait {wait}s before requesting another code", _btnDim, GUILayout.Height(38));
+            GUILayout.Label($"Please wait {wait}s before requesting another code", _btnDim, GUILayout.Height(42));
         }
-        else if (GUILayout.Button("Get my donation code", _btnPrimary, GUILayout.Height(38)))
+        else if (GUILayout.Button("Get my donation code", _btnPrimary, GUILayout.Height(42)))
         {
             _donateCooldownUntil = now + DonateCooldownSeconds;
             _donateStatus = "Requesting your code...";
@@ -468,19 +468,20 @@ public class DonationPanel : MonoBehaviour
             GUILayout.Label("Your donation code:", _label);
             GUILayout.Box(_donateCode, _codeBox, GUILayout.Height(46), GUILayout.ExpandWidth(true));
 
-            GUILayout.Space(4);
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Copy code", _btn, GUILayout.Height(30), GUILayout.Width(130)))
+            GUILayout.Space(6);
+            // Stacked full-width buttons so neither label clips. Heights are
+            // generous enough for each style's font + padding.
+            if (GUILayout.Button("Copy code", _btn, GUILayout.Height(34)))
             {
                 GUIUtility.systemCopyBuffer = _donateCode;
                 _copiedFlashUntil = now + 2f;
             }
-            if (!string.IsNullOrEmpty(_donateUrl)
-                && GUILayout.Button("Open donation portal", _btnPrimary, GUILayout.Height(30)))
+            if (!string.IsNullOrEmpty(_donateUrl))
             {
-                Application.OpenURL(_donateUrl);
+                GUILayout.Space(4);
+                if (GUILayout.Button("Open donation portal", _btnPrimary, GUILayout.Height(42)))
+                    Application.OpenURL(_donateUrl);
             }
-            GUILayout.EndHorizontal();
 
             if (now < _copiedFlashUntil)
                 GUILayout.Label("Copied to clipboard!", _sub);
@@ -706,7 +707,7 @@ public class DonationPanel : MonoBehaviour
         GUILayout.EndScrollView();
 
         GUILayout.Space(6);
-        if (GUILayout.Button("I understand", _btnPrimary, GUILayout.Height(32))) _showTerms = false;
+        if (GUILayout.Button("I understand", _btnPrimary, GUILayout.Height(42))) _showTerms = false;
 
         GUILayout.EndArea();
     }
