@@ -18,7 +18,14 @@ public static class Config
     public static bool   WelcomeEnabled { get; private set; } = true;
     public static string WelcomeMessage { get; private set; }   // null → auto
 
-    public static bool Ready => !string.IsNullOrEmpty(BackendUrl) && !string.IsNullOrEmpty(PluginToken);
+    // "Ready" means we have real, non-placeholder credentials. The template
+    // values ("your-app.fly.dev" / "paste-the-...") are non-empty but useless —
+    // treating them as ready made the panel log "Backend ready: True" and then
+    // silently fail every fetch against a dead domain, showing a confusing
+    // "Offline" with no clue why.
+    public static bool Ready =>
+        !string.IsNullOrEmpty(BackendUrl) && !BackendUrl.Contains("your-app.fly.dev")
+        && !string.IsNullOrEmpty(PluginToken) && !PluginToken.StartsWith("paste-the-");
 
     public static void Load()
     {
@@ -66,7 +73,13 @@ public static class Config
             Debug.LogError($"[Valcoin] Failed to load config: {ex.Message}");
         }
 
-        if (!Ready)
+        if (Ready)
+            Debug.Log($"[Valcoin] Backend configured: {BackendUrl}");
+        else if (!string.IsNullOrEmpty(BackendUrl) && BackendUrl.Contains("your-app.fly.dev"))
+            Debug.LogWarning("[Valcoin] valcoin_config.json still has the PLACEHOLDER backend_url " +
+                             "(your-app.fly.dev). Set backend_url + plugin_token to your real values " +
+                             "and restart. Donation actions are disabled until then.");
+        else
             Debug.LogWarning("[Valcoin] Backend not configured; donation actions and grant polling are disabled.");
     }
 }

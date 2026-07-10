@@ -142,14 +142,23 @@ public class DonationPanel : MonoBehaviour
     private IEnumerator FetchState()
     {
         var steam64 = ResolveLocalSteam64();
-        if (string.IsNullOrEmpty(steam64)) yield break;
+        if (string.IsNullOrEmpty(steam64))
+        {
+            _online = false;
+            Debug.LogWarning("[Valcoin] Panel offline: couldn't resolve local Steam ID yet.");
+            yield break;
+        }
 
         yield return BackendClient.Get<StateResp>(
             $"/api/state/{steam64}?top=5",
             (ok, r, err) =>
             {
                 _online = ok && r != null;
-                if (!_online) return;
+                if (!_online)
+                {
+                    Debug.LogWarning($"[Valcoin] Panel offline: /api/state failed ({err ?? "no response"}).");
+                    return;
+                }
                 _balance = r.balance;
                 _topDonors = r.top_donors != null ? new List<TopEntry>(r.top_donors) : new List<TopEntry>();
             });
