@@ -115,12 +115,18 @@ The placeholder name `valheim-donations` turned out to be unclaimed, so
 `flyctl launch --no-deploy` kept it as-is — the live app is
 `https://valheim-donations.fly.dev`. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
-### Provider rollout — Ko-fi only so far
+### Provider rollout — Ko-fi + Patreon live (2026-07-10)
 
-Only `KOFI_VERIFICATION_TOKEN` / `KOFI_USERNAME` are set as Fly secrets.
-PayPal, Patreon, and PayMongo routes are deployed but 503 until their secrets
-are added — see [PROVIDERS.md](PROVIDERS.md) and the "Per-provider secrets"
-section of [DEPLOYMENT.md](DEPLOYMENT.md).
+Live on Fly secrets: **Ko-fi** (`KOFI_VERIFICATION_TOKEN` / `KOFI_USERNAME`)
+and **Patreon** (`PATREON_USERNAME` / `PATREON_CLIENT_ID` /
+`PATREON_CLIENT_SECRET` / `PATREON_WEBHOOK_SECRET` / `PATREON_REDIRECT_URI` =
+`.../portal/patreon/callback`). PayPal and PayMongo routes are deployed but
+503 until their secrets are added — see [PROVIDERS.md](PROVIDERS.md) and the
+"Per-provider secrets" section of [DEPLOYMENT.md](DEPLOYMENT.md).
+
+Note on Patreon: payments carry no claim code, so a first-time patron must
+click **"Link my Patreon account"** on the portal once (OAuth); renewals
+auto-credit thereafter via `provider_links`.
 
 ## Regenerating this snapshot
 
