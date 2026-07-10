@@ -3,9 +3,10 @@
 This file decays fastest of anything in `docs/` — check the actual source
 files before trusting it if it's been a while.
 
-- **Project phase:** 6 — backend is **live on Fly.io**, Ko-fi wired end-to-end,
-  plugin catalog now syncs to remote clients, first Thunderstore package built,
-  chat/console commands removed in favor of UI-only.
+- **Project phase:** 6 — backend is **live on Fly.io** with **all four
+  providers configured** (Ko-fi, Patreon, PayPal, PayMongo), plugin catalog
+  syncs to remote clients, first Thunderstore package built, chat/console
+  commands removed in favor of UI-only.
 - **Backend version:** `0.5.0` (see [main.py](../backend/app/main.py)).
   **Deployed and reachable at `https://valheim-donations.fly.dev`** (see
   [DEPLOYMENT.md](DEPLOYMENT.md) for the live config).
@@ -115,18 +116,40 @@ The placeholder name `valheim-donations` turned out to be unclaimed, so
 `flyctl launch --no-deploy` kept it as-is — the live app is
 `https://valheim-donations.fly.dev`. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
-### Provider rollout — Ko-fi + Patreon live (2026-07-10)
+### Provider rollout — all four providers live (2026-07-10)
 
-Live on Fly secrets: **Ko-fi** (`KOFI_VERIFICATION_TOKEN` / `KOFI_USERNAME`)
-and **Patreon** (`PATREON_USERNAME` / `PATREON_CLIENT_ID` /
-`PATREON_CLIENT_SECRET` / `PATREON_WEBHOOK_SECRET` / `PATREON_REDIRECT_URI` =
-`.../portal/patreon/callback`). PayPal and PayMongo routes are deployed but
-503 until their secrets are added — see [PROVIDERS.md](PROVIDERS.md) and the
-"Per-provider secrets" section of [DEPLOYMENT.md](DEPLOYMENT.md).
+Live on Fly secrets: **Ko-fi**, **Patreon**, **PayPal**, and **PayMongo**. Each
+webhook returns **401** to a bad-signature probe (configured & verifying) rather
+than **503** (unconfigured). Full secret list in
+[DEPLOYMENT.md](DEPLOYMENT.md#live-status-2026-07-10); per-provider setup in
+[PROVIDERS.md](PROVIDERS.md).
 
-Note on Patreon: payments carry no claim code, so a first-time patron must
-click **"Link my Patreon account"** on the portal once (OAuth); renewals
-auto-credit thereafter via `provider_links`.
+Per-provider notes worth remembering:
+
+- **Ko-fi** — the only provider tested end-to-end with a (synthetic) webhook
+  through to in-game delivery. Code rides in the message field.
+- **Patreon** — payments carry no claim code, so a first-time patron must click
+  **"Link my Patreon account"** on the portal once (OAuth); renewals auto-credit
+  thereafter via `provider_links`.
+- **PayPal** — auto-credit requires `PAYPAL_BUSINESS_EMAIL`. The portal builds a
+  `paypal.com/donate/?business=…&custom=<code>` link so the claim code returns
+  as `resource.custom` on the `PAYMENT.SALE.COMPLETED` / `PAYMENT.CAPTURE.COMPLETED`
+  webhook. **Untested risk:** some newer PayPal accounts force fixed "hosted
+  buttons" that can't carry a per-donor `custom`; if this account is one of
+  those, auto-credit won't fire and donations land as `unmatched` (credit them
+  via `POST /api/admin/credit-unmatched`). Confirm with one real ~$1 donation.
+- **PayMongo** — the tightest flow: the portal mints a PaymentLink server-side
+  with `metadata.claim_code` baked in, so the code is guaranteed to travel. Live
+  `sk_live` key verified by minting a real (unpaid) ₱100 PaymentLink. Covers
+  GCash + Maya + GrabPay + cards in one integration; priced in PHP.
+  **Bug fixed during rollout (backend `0a69502`):** `_provider_links` set
+  `out["paymongo"] = {}`, but the template gates the card on
+  `{% if providers.paymongo %}` and an empty dict is falsy in Jinja, so the card
+  stayed hidden whenever PayMongo was configured — now `{"enabled": True}`.
+
+**Live-money testing was deliberately skipped** for PayPal and PayMongo per user
+decision (2026-07-10). They are verified configured (401 probes, PayMongo link
+mint) but no real charge has flowed through either yet.
 
 ## Regenerating this snapshot
 
