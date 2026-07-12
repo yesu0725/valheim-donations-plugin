@@ -16,9 +16,11 @@ covered the same actions over a silent RPC. See [docs/SHOP.md](../docs/SHOP.md)
 for the full writeup and consequences (vanilla-client support is gone; the
 plugin is now required client-side).
 
-A small `ChatDecorationPatch` still runs server-side — it only prefixes a
-player's normal chat messages with their donor badge (⭐) / chat title, if
-they own those perks. It's cosmetic, not a command.
+There are no chat-decoration perks. Donor badge / chat title were removed: on a
+dedicated server chat is routed peer-to-peer, so reliable per-player cosmetic
+decoration would require a server→client perk registry plus cross-mod chat/hud
+patch ordering — fragile enough that the perks were dropped in favour of
+consumable + convenience rewards.
 
 Admins are listed in `BepInEx/config/valcoin_admins.yaml` (Steam64 IDs only) —
 used by the panel's Admin tab (give/remove a player's balance).
@@ -30,41 +32,43 @@ Each SKU has:
 
 ```yaml
 shop:
-  donor_badge:                    # grant_perk — cosmetic flag
-    name: "Donor Badge"
-    description: "A star next to your name in chat. Forever."
-    price: 500
-    effect: grant_perk            # grant_perk | add_charges | grant_item
-    perk: donor_badge             # internal perk id
+  soulkeeper_10:                  # add_charges — backend-tracked consumable pool
+    name: "Soulkeeper Charm (x10)"
+    description: "On death, keep your skills - no skill drain. Adds 10 charges."
+    price: 1300
+    effect: add_charges           # grant_perk | add_charges | grant_item
+    perk: soulkeeper              # charge kind (the pool key)
+    charges: 10                   # charges credited per purchase
 
-  food_t2:                        # grant_item — weekly-limited consumable (proposed)
+  food_t2:                        # grant_item — weekly-limited consumable
     name: "Plains Feast (bundle)"
     price: 180
-    effect: grant_item            # spawns items into inventory (drop if full)
+    effect: grant_item            # spawns item stacks at the buyer's feet
     item: "LoxPie:5,Bread:5,FishWraps:5"   # comma list of prefab or prefab:qty
     weekly_cap: 3                 # max purchases per player per week (0 = unlimited)
     requires_boss: defeated_goblinking     # global boss key gate (optional)
 ```
 
-**Built-in perk handlers** (the `perk:` field):
+**Effects** (the `effect:` field):
 
-| Perk               | Type        | What it does                                                        | Status |
-|--------------------|-------------|--------------------------------------------------------------------|--------|
-| `donor_badge`      | grant_perk  | Adds ⭐ prefix to the player's chat messages                       | built  |
-| `chat_title`       | grant_perk  | Unlocks the chat-title editor (Gift tab) to set a `[Bracket]` prefix | built  |
-| `companion_flair`  | grant_perk  | Donor-only badge colour / name style on Lost Scrolls II Dvergr     | proposed |
-| `lordslayer_title` | grant_perk  | Gilded colour of the *earned* Lordslayer title (all 7 BiomeLords)  | proposed |
+| Effect        | What it does                                                              | Status |
+|---------------|--------------------------------------------------------------------------|--------|
+| `grant_item`  | Spawns weekly-capped, optionally boss-gated item stacks at the buyer's feet | built  |
+| `add_charges` | Credits a backend-tracked consumable charge pool (the shipped **Soulkeeper Charm** — on death skip the skill drain + Valkyrie tombstone carry) | built  |
+| `grant_perk`  | Flips a passive `PerkManager` flag — generic mechanism, but no SKU ships one today | supported |
 
-**`grant_item` effect (proposed):** weekly-limited food / meads / materials.
-Requires new `Catalog.Sku` fields (`item`, `weekly_cap`, `requires_boss`),
-parser cases, a relaxed `Commit` guard (grant_item SKUs have no `perk`), a
-`grant_item` case in `ShopHandler.ApplyEffect`, and a backend weekly counter on
-`/api/spend`. Full catalog + rationale:
-[examples/valcoin_shop.example.yaml](examples/valcoin_shop.example.yaml) and
+> **Removed cosmetics:** `donor_badge` / `chat_title` / `companion_flair` /
+> `lordslayer_title` (and `ChatDecoration.cs`) were dropped — client-side chat
+> rendering was unreliable on this dedicated-server build (peer-to-peer chat, no
+> `NetworkUserId`). Replaced by the Soulkeeper Charm. Still-unbuilt armor perks
+> are in [../docs/ROADMAP.md](../docs/ROADMAP.md).
+
+The live catalog is **12 SKUs** (3 Soulkeeper Charm tiers + 9 `grant_item`
+bundles). Add `grant_item` / `add_charges` SKUs by editing the YAML; new effect
+types require a code change in `ShopHandler.cs::ApplyEffect`. Full catalog +
+rationale: [examples/valcoin_shop.example.yaml](examples/valcoin_shop.example.yaml),
+[../docs/SHOP.md](../docs/SHOP.md), and
 [../docs/ecosystem/donation-hooks.md](../docs/ecosystem/donation-hooks.md).
-
-Add plain `grant_perk` SKUs by editing the YAML. New effect types require a code
-change in `ShopHandler.cs::ApplyEffect`.
 
 ## Donation Codex (F4)
 
@@ -80,7 +84,7 @@ online. Buy/donate actions themselves live in the same panel.
 - `BepInEx/config/valcoin_admins.yaml`           — admin Steam64 list
 - `BepInEx/config/valcoin_shop.yaml`             — SKU catalog
 - `BepInEx/config/valcoin_data/coin_balances.json` — balances + applied-grant cache
-- `BepInEx/config/valcoin_data/perks.json`       — per-player perks/charges/title/home
+- `BepInEx/config/valcoin_data/perks.json`       — per-player perks (legacy; charge pools are now backend-authoritative in the `charges` table)
 - `BepInEx/config/valcoin_shop.example.yaml`     — see `examples/` for the proposed ecosystem catalog
 
 ## In-game UI panel (F4)
@@ -89,23 +93,25 @@ The plugin must be installed **client-side too** for this panel to exist —
 press **F4** (configurable) to open it:
 
 ```
-┌─── Valheim Donations ──────── [X] ┐
-│ Balance: 1500 c                   │
-│ Perks: donor_badge, companion_flair│
-│ [Donate] [Shop] [Gift] [Top] [Admin]│  <- Admin only shows for admins
-│ ───────────────────────────────── │
-│ < per-tab content >               │
-│ ───────────────────────────────── │
-│ Messages (server replies)         │
-└───────────────────────────────────┘
+┌─── Valheim Donations ─────────── [X] ┐
+│ Balance: 1500 Valcoins               │
+│ Charges: Soulkeeper Charm x3         │  <- only shows when you hold charges
+│ [Donate] [Shop] [Gift] [Patrons] [Admin]│  <- Admin only shows for admins
+│ ──────────────────────────────────── │
+│ < per-tab content >                  │
+│ ──────────────────────────────────── │
+│ Messages (server replies)            │
+└──────────────────────────────────────┘
 ```
 
 - **Donate tab** — one button. Calls the backend, displays your code + URL.
-- **Shop tab** — scrollable SKU list with "Buy" buttons; shows owned/charges and
-  (for `grant_item` SKUs) the weekly cap remaining per row.
-- **Gift tab** — recipient + amount fields, "Send gift" button. Also exposes the
-  chat-title editor when you own the `chat_title` perk.
-- **Top tab** — leaderboard of lifetime donors.
+- **Shop tab** — scrollable SKU list with "Buy" buttons. Renders authoritative
+  state from `/api/state`: one-time buys show "Already Purchased" (Buy disabled),
+  boss-gated items show "Unlocks after <boss>", weekly items show "N of M left
+  this week" (Buy disables at the cap, re-enables after the Monday reset), and
+  `add_charges` items show how many charges you hold.
+- **Gift tab** — recipient + amount fields, "Send gift" button.
+- **Patrons tab** — leaderboard of lifetime donors.
 - **Admin tab** — give/remove a player's Valcoin balance manually. Only
   rendered once the server confirms (via a `whoami` RPC) the local Steam64 is
   in `valcoin_admins.yaml`.

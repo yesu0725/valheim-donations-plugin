@@ -8,51 +8,71 @@ client-side to use the donation system at all.
 
 ## Layout
 
-- [Plugin.cs](../valheim-plugin/Plugin.cs) — BepInEx entry, admin YAML, Harmony patch
+- [Plugin.cs](../valheim-plugin/Plugin.cs) — BepInEx entry, admin YAML, Harmony patch (current version **5.7.0**)
 - [GrantPoller.cs](../valheim-plugin/GrantPoller.cs) — polls `/api/grants/pending`
 - [CatalogSync.cs](../valheim-plugin/CatalogSync.cs) — broadcasts the shop catalog to remote clients over RPC
 - [CoinManager.cs](../valheim-plugin/CoinManager.cs) — balance cache + applied-grant dedupe
-- [ShopHandler.cs](../valheim-plugin/ShopHandler.cs) — purchase validation, perk-effect dispatch
-- [PerkManager.cs](../valheim-plugin/PerkManager.cs) — per-player perks/charges/title/home
+- [ShopHandler.cs](../valheim-plugin/ShopHandler.cs) — purchase validation, effect dispatch (`grant_item` / `add_charges`)
+- [PerkManager.cs](../valheim-plugin/PerkManager.cs) — per-player perks (legacy helpers; charge pools are now backend-authoritative)
 - [Catalog.cs](../valheim-plugin/Catalog.cs) — loads `valcoin_shop.yaml`; serializes for `CatalogSync`
 - [Flows.cs](../valheim-plugin/Flows.cs) — donate / gift / leaderboard implementations, shared by the router
-- [ChatDecoration.cs](../valheim-plugin/ChatDecoration.cs) — passive donor-badge/chat-title
-  chat message prefix (cosmetic only — not a command)
+- [Soulkeeper.cs](../valheim-plugin/Soulkeeper.cs) — Soulkeeper Charm Phase 1: caches the local
+  charge count (`SoulkeeperPoller`), and on death consumes a charge to skip the skill drain
+  (`Player.OnDeath` + `Skills.LowerAllSkills` patches). Backend-authoritative via `/api/charges/consume`
+- [ValkyrieCarry.cs](../valheim-plugin/ValkyrieCarry.cs) — Soulkeeper Charm Phase 2: after a warded
+  death, on respawn the intro Valkyrie carries the player from the spawn point to their tombstone
+  (fade transition, ESC-menu + auto-pickup suppressed during flight, distance-scaled watchdog with a
+  plain-teleport fallback)
+- [LocalIdentity.cs](../valheim-plugin/LocalIdentity.cs) — `Steam64()` resolver extracted so the
+  pollers can resolve the local id without the panel
 - [DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — the single combined client-side
-  IMGUI panel (opens with F4); tabs: Donate / Shop / Gift / Patrons / Admin.
-  Offline-resilient; Donate tab has inline code + Copy + Open-portal + cooldown + Terms modal
+  IMGUI panel (opens with F4); tabs: Donate / Shop / Gift / Patrons / Admin. Offline-resilient;
+  Donate tab has inline code + Copy + Open-portal + cooldown + Terms modal. Renders owned/weekly/charge
+  states from `/api/state`; header shows a persistent "Charges:" line for held consumables
+- [DonationUiState.cs](../valheim-plugin/DonationUiState.cs) — blocks all game input (ZInput reads +
+  Minimap/Inventory hard-guards) while the panel is open, so typing an amount can't open the map/inventory
 - [RpcLayer.cs](../valheim-plugin/RpcLayer.cs) + [UiActionRouter.cs](../valheim-plugin/UiActionRouter.cs)
   — `vc_action` silent RPC for panel → server actions (the only input path)
 - [BackendClient.cs](../valheim-plugin/BackendClient.cs) — UnityWebRequest wrapper
 - [SteamIdResolver.cs](../valheim-plugin/SteamIdResolver.cs) — Steam64 + PlayFab support
 - [Utils.cs](../valheim-plugin/Utils.cs) — `SharedCoroutineRunner`, shared by the static handler classes
 
+> **Removed:** `ChatDecoration.cs` (donor-badge/chat-title chat prefix) was deleted along with the
+> cosmetic `donor_badge` / `chat_title` / `companion_flair` / `lordslayer_title` SKUs — on this
+> dedicated-server build the peer-to-peer chat routing and missing `NetworkUserId` made the effect
+> unreliable. Replaced by the Soulkeeper Charm consumable. See [STATUS.md](STATUS.md).
+
 For the user-facing panel layout and shop schema, see [SHOP.md](SHOP.md).
 
 ## Ecosystem shop extensions
 
-**Built** (this pass) — the `grant_item` pipeline:
+**Built** — the `grant_item` pipeline:
 
-- **`Catalog.cs`** — `Sku` now carries `Item` / `WeeklyCap` / `RequiresBoss`;
-  parser handles `item` / `weekly_cap` / `requires_boss`; `Commit` requires
-  `item` for `grant_item` SKUs (and `perk` for the perk effects) instead of
-  dropping every SKU with no `perk`.
+- **`Catalog.cs`** — `Sku` carries `Item` / `WeeklyCap` / `RequiresBoss` /
+  `Charges`; parser handles `item` / `weekly_cap` / `requires_boss` / `charges`;
+  `Commit` requires `item` for `grant_item` SKUs (and `perk` for `grant_perk` /
+  `add_charges`) instead of dropping every SKU with no `perk`.
 - **`ShopHandler.cs`** — `ApplyEffect` has a `grant_item` case that spawns
   ItemDrops at the buyer's feet (server-authoritative; works for vanilla
   clients, matching ServerGuide's reward-drop pattern). Pre-checks the
   `requires_boss` gate (`ZoneSystem.GetGlobalKey`) and character presence
   *before* debiting, guards against re-applying a `duplicate` spend, and
-  surfaces the backend's 429 "weekly limit" message.
+  surfaces the backend's 429 "weekly limit" message. `Buy()` forwards
+  `grant_charges` / `charge_kind` for `add_charges` SKUs.
 - **`backend/app/routes/spend.py`** — `/api/spend` accepts `weekly_cap` and
   enforces a per-player, per-SKU count within the current week (Monday 00:00
-  UTC), returning **429** with a "resets in Nd Nh" detail. See [BACKEND.md](BACKEND.md).
+  UTC), returning **429** with a "resets in Nd Nh" detail; also credits
+  `add_charges` pools. See [BACKEND.md](BACKEND.md).
 
-**Still proposed** (cosmetic, not built):
+**Built** — the `add_charges` pipeline (Soulkeeper Charm): a backend-authoritative
+consumable charge pool. See the file list above (`Soulkeeper.cs`,
+`ValkyrieCarry.cs`) and [SHOP.md](SHOP.md#add_charges-effect--soulkeeper-charm-death-insurance-).
 
-- **`companion_flair` / `lordslayer_title`** — cosmetic `grant_perk` perks (they
-  already grant generically); the *rendering* lives in Lost Scrolls II /
-  BiomeLords, and `lordslayer_title` should verify the player earned Lordslayer
-  (all 7 BiomeLords) before granting.
+**Dropped** (were cosmetic `grant_perk` perks): `companion_flair` /
+`lordslayer_title` / `donor_badge` / `chat_title` — the client-side rendering
+proved unreliable on this dedicated-server build (peer-to-peer chat, no
+`NetworkUserId`), so they were removed in favor of the Soulkeeper Charm. The
+still-unbuilt armor perks live in [ROADMAP.md](ROADMAP.md).
 
 Operator config + the ServerGuide promo YAML:
 [../valheim-plugin/examples/valcoin_shop.example.yaml](../valheim-plugin/examples/valcoin_shop.example.yaml),
@@ -73,6 +93,7 @@ The csproj expects these in `valheim-plugin/libs/`. Most come from Valheim's
 - **`UnityEngine.IMGUIModule.dll`** ← needed for the in-game panel.
   Same location.
 - **`UnityEngine.InputLegacyModule.dll`** ← needed for the F4 keybind. Same.
+- **`UnityEngine.TextRenderingModule.dll`** ← needed for `FontStyle` in the panel styles. Same.
 - `Newtonsoft.Json.dll`
 
 `YamlDotNet` and `Jotunn` are **no longer required** — admin YAML uses a

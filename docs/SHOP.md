@@ -39,7 +39,6 @@ once the operator connects the backend — no client update needed.
 ```
 ┌─── Valheim Donations ──────  Live  [X] ┐
 │ Balance: 1500 Valcoins                 │
-│ Perks: donor_badge, companion_flair    │
 │ [Donate] [Shop] [Gift] [Patrons] [Admin]│  <- Admin only shows for admins
 │ ────────────────────────────────────── │
 │ < per-tab content >                    │
@@ -53,8 +52,7 @@ once the operator connects the backend — no client update needed.
   **Terms of Use** link that opens an in-game modal.
 - **Shop tab** — scrollable SKU list with "Buy" buttons; shows owned/charges and
   (for `grant_item` SKUs) the weekly cap + boss gate per row.
-- **Gift tab** — recipient + amount fields, "Send gift" button. Also exposes the
-  chat-title editor when you own the `chat_title` perk.
+- **Gift tab** — recipient + amount fields, "Send gift" button.
 - **Patrons tab** — leaderboard of lifetime donors.
 - **Admin tab** (admins only) — give/remove a player's Valcoin balance
   manually. Only appears after the server confirms (via a `whoami` RPC
@@ -78,22 +76,19 @@ Each SKU has:
 
 ```yaml
 shop:
-  donor_badge:                    # ✅ grant_perk — cosmetic flag
-    name: "Donor Badge"
-    description: "A star next to your name in chat. Forever."
-    price: 500
-    effect: grant_perk            # grant_perk | add_charges | grant_item
-    perk: donor_badge             # internal perk id (grant_perk / add_charges)
-
-  food_t2:                        # 🔜 grant_item — weekly-limited consumable
+  food_t2:                        # grant_item — weekly-limited consumable
     name: "Plains Feast (bundle)"
     description: "Lox Meat Pie + Bread + Fish Wraps, x5 each. Requires Yagluth."
     price: 180
-    effect: grant_item            # spawns items into inventory (drop if full)
+    effect: grant_item            # grant_perk | add_charges | grant_item
     item: "LoxPie:5,Bread:5,FishWraps:5"   # comma list of prefab or prefab:qty
     weekly_cap: 3                 # max purchases per player per week (0 = unlimited)
     requires_boss: defeated_goblinking     # global boss key gate (optional)
 ```
+
+The `grant_perk` and `add_charges` effects are still supported by the plugin,
+but no perk-based SKUs ship by default (the donor-badge / chat-title cosmetics
+were removed — see "Built-in perk handlers" below).
 
 ### Fields
 
@@ -109,12 +104,43 @@ shop:
 
 ### Built-in perk handlers
 
-| Perk | Type | What it does | Status |
-|---|---|---|---|
-| `donor_badge` | grant_perk | Adds ⭐ prefix to the player's chat messages | ✅ |
-| `chat_title` | grant_perk | Unlocks the chat-title editor (Gift tab) to set a `[Bracket]` prefix | ✅ |
-| `companion_flair` | grant_perk | Donor-only badge colour / name style on your Lost Scrolls II Dvergr (cosmetic only) | 🔜 |
-| `lordslayer_title` | grant_perk | Gilded colour of the *earned* Lordslayer title (must have slain all 7 BiomeLords) | 🔜 |
+No `grant_perk` perks ship by default. The donor-badge (⭐ chat prefix) and
+chat-title cosmetics were removed: on a dedicated server chat is routed
+peer-to-peer, so reliable per-player decoration would need a server→client perk
+registry plus fragile cross-mod patch ordering. Donations now reward consumables
+and convenience instead. The `grant_perk` effect handler remains available for
+future cosmetic perks.
+
+### `add_charges` effect — Soulkeeper Charm (death insurance) ✅
+
+A charge-based convenience consumable. Buying an `add_charges` SKU credits a
+**backend-tracked charge pool** (`grant_charges` + `charge_kind` on `/api/spend`,
+stored in the `charges` table). The shipped `soulkeeper` pool: on the local
+player's death, one charge is consumed and the vanilla skill drain is skipped —
+you keep your skills. It's **PvE-safe** (activates only *after* you've died, so
+it never helps win a fight, even a duel).
+
+- Charges are the player's own state, so the client caches its count (from
+  `/api/state.charges`) and the synchronous death path (`Player.OnDeath` +
+  `Skills.LowerAllSkills` patches) decides instantly, then decrements via
+  `/api/charges/consume` — reconciling on the next poll (`SoulkeeperPoller`).
+- Three tiers (`soulkeeper_1/5/10`, 300 / 1200 / 1300) use the **decoy effect** —
+  the ×5 exists to make ×10 the obvious buy.
+- **Phase 2 — the Valkyrie carry (`ValkyrieCarry.cs`, prototype):** the *same*
+  warded death also arms a carry. The death position (= where the tombstone
+  drops) is captured in `Player.OnDeath`. After respawning at the spawn point
+  the player is told "1 charge consumed — a Valkyrie will carry you to your
+  tombstone in 20 seconds"; at pickup the screen **fades to black**, the intro
+  Valkyrie grabs them *at the spawn point*, and the fade lifts mid-flight on
+  the **real spawn→tombstone route** (the vanilla `Valkyrie` is spawned via
+  `SetIntro(true)` + private `SpawnValkyrie()`, then its private flight fields
+  are re-routed; speed scales with distance, ~35 s flights). During the flight
+  the **ESC menu is suppressed** (`Menu.Show` prefix) and **auto-pickup is
+  disabled** (items unloading beneath a fast fly-through NRE'd `AutoPickup` in
+  testing), both restored on landing. Gated by `valkyrie_carry_visual` (config,
+  default on); a watchdog polls `Player.InIntro()` (vanilla
+  `Valkyrie.DropPlayer` clears it) with a distance-scaled hard cap — a stall
+  degrades to a plain distant teleport to the grave, never a soft-lock.
 
 ### `grant_item` effect (weekly-limited consumables) 🔜
 
@@ -133,26 +159,29 @@ guardrails (see [ecosystem/donation-hooks.md](ecosystem/donation-hooks.md)):
   Silver, Black metal, Flametal), Surtling cores, Refined Eitr, Chitin, Ancient
   seeds, Dragon tears.
 
-Proposed catalog (prices anchored to `donor_badge` = 500):
+Shipped default catalog (9 weekly-limited `grant_item` bundles):
 
 | SKU | Gate | Bundle | Price | Weekly cap |
 |---|---|---|---|---|
 | `food_t1` — Sausages, Blood Pudding, Serpent Stew | `defeated_bonemass` | x5 ea | 120 | 4 |
 | `food_t2` — Lox Meat Pie, Bread, Fish Wraps | `defeated_goblinking` | x5 ea | 180 | 3 |
 | `food_t3` — Misthare Supreme, Mushroom Omelette, Yggdrasil Porridge | `defeated_queen` | x5 ea | 260 | 2 |
-| `food_t4` — top Ashlands dishes | `defeated_fader` | x5 ea | 350 | 2 |
+| `food_t4` — Mashed Meat, Piquant Pie, Marinated Greens | `defeated_fader` | x5 ea | 350 | 2 |
 | `meads_utility` — Tasty, Frost Res, Poison Res | — | x5 ea | 100 | 3 |
 | `meads_vitality` — Medium Healing, Medium Stamina | `defeated_bonemass` | x5 ea | 160 | 2 |
 | `meads_eitr` — Minor Eitr | `defeated_queen` | x5 | 160 | 2 |
 | `farm_bundle` — Barley, Flax, Onion/Carrot/Turnip seeds | `defeated_goblinking` | x20 ea | 120 | 2 |
 | `forage_bundle` — Coal, Resin, Feathers, Thistle, Dandelion, Honey | — | x50/x20 | 100 | 2 |
 
-The `grant_item` effect + weekly cap + `requires_boss` gate are **now
-implemented** (`Catalog.cs`, `ShopHandler.cs`, `/api/spend`) — see
-[PLUGIN.md](PLUGIN.md) and [BACKEND.md](BACKEND.md). To go live you only need to
-add the SKUs to `valcoin_shop.yaml` (copy from the example) and confirm the
-Ashlands food prefab ids for your Valheim version. Adding a plain `grant_perk`
-SKU is still just a YAML edit.
+The `grant_item` effect + weekly cap + `requires_boss` gate are **implemented and
+live** (`Catalog.cs`, `ShopHandler.cs`, `/api/spend`) — see [PLUGIN.md](PLUGIN.md)
+and [BACKEND.md](BACKEND.md). All 12 SKUs (3 Soulkeeper Charm charge tiers +
+9 `grant_item` bundles) ship as the auto-generated default
+`valcoin_shop.yaml`, so a fresh install gets the full catalog. **A server that
+already generated the old 3-SKU `valcoin_shop.yaml` will NOT auto-overwrite it**
+(`EnsureFile` skips when the file exists) — replace that YAML on the host and
+restart to promote the catalog on an existing server. Adding or editing a SKU is
+just a YAML edit + restart.
 
 ## Advertising the donation system
 

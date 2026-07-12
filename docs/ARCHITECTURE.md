@@ -43,12 +43,16 @@ Shop purchases and gifts (Shop/Gift tabs) call atomic `/api/spend` and
 these are in-game panel (F4) actions over a silent RPC — there is no chat or
 console command path (see [SHOP.md](SHOP.md#no-chat-or-console-commands)).
 
-The plugin owns the SKU catalog and applies effects locally (cosmetic
-`grant_perk` perks today; a proposed `grant_item` effect spawns weekly-limited
-consumables). Balance-guarded ecosystem hooks for the sibling mods (BiomeLords,
-Lost Scrolls II, ServerGuide, ServerGuard) are documented under
-[ecosystem/](ecosystem/donation-hooks.md); the weekly cap for `grant_item` is
-enforced on `/api/spend` since the backend owns the ledger.
+The plugin owns the SKU catalog and applies effects locally. Two effect
+families are live: `grant_item` spawns weekly-limited consumables (feasts,
+meads, materials) at the buyer's feet, and `add_charges` credits a
+backend-tracked consumable pool — the shipped one is the **Soulkeeper Charm**
+(on death: skip the skill drain, then a Valkyrie carries the player back to
+their tombstone on respawn; see [SHOP.md](SHOP.md)). Balance-guarded ecosystem
+hooks for the sibling mods (BiomeLords, Lost Scrolls II, ServerGuide,
+ServerGuard) are documented under [ecosystem/](ecosystem/donation-hooks.md).
+The `grant_item` weekly cap and the `add_charges` charge pool are both enforced
+on `/api/spend` since the backend owns the ledger.
 
 ## Endpoints (quick reference)
 
@@ -78,7 +82,8 @@ SQLite (WAL mode). Tables, from [backend/app/schema.sql](../backend/app/schema.s
 | `oauth_states` | Patreon OAuth CSRF state, 10-min TTL |
 | `grants` | Coin credits pending/delivered/acked to the plugin |
 | `provider_links` | provider_user_id ↔ steam64 bindings (e.g. linked Patreon accounts) |
-| `spends` | Append-only purchase/transfer ledger, `idempotency_key` UNIQUE |
+| `spends` | Append-only purchase/transfer ledger, `idempotency_key` UNIQUE. Also drives `/api/state`'s `owned_skus` + `weekly_usage` |
+| `charges` | Per-`(steam64, kind)` consumable charge counts (e.g. `soulkeeper`), credited by `add_charges` spends, decremented by `/api/charges/consume` |
 
 ## Idempotency model
 
