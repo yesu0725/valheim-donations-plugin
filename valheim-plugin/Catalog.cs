@@ -87,26 +87,115 @@ public static class Catalog
 # Edit and restart the server to apply changes.
 
 shop:
-  donor_badge:
-    name: ""Donor Badge""
-    description: ""A star next to your name in chat. Forever.""
-    price: 500
-    effect: grant_perk
-    perk: donor_badge
 
-  chat_title:
-    name: ""Chat Title""
-    description: ""Unlocks a chat title editor in the Gift tab to set a custom prefix (e.g. [Jarl])""
-    price: 1500
-    effect: grant_perk
-    perk: chat_title
+  # ---------- Convenience: Soulkeeper Charm (death insurance) ----------
+  # Charges of one shared 'soulkeeper' pool. On death you keep your skills (no
+  # skill drain). Never helps you win a fight - it only softens the death tax.
+  soulkeeper_1:
+    name: ""Soulkeeper Charm (x1)""
+    description: ""On death, keep your skills - no skill drain. Adds 1 charge.""
+    price: 300
+    effect: add_charges
+    perk: soulkeeper
+    charges: 1
 
-  companion_flair:
-    name: ""Patron's Companion Flair""
-    description: ""A donor-only badge colour and name style on your Dvergr companions. Cosmetic only.""
-    price: 2000
-    effect: grant_perk
-    perk: companion_flair
+  soulkeeper_5:
+    name: ""Soulkeeper Charm (x5)""
+    description: ""On death, keep your skills - no skill drain. Adds 5 charges.""
+    price: 1200
+    effect: add_charges
+    perk: soulkeeper
+    charges: 5
+
+  soulkeeper_10:
+    name: ""Soulkeeper Charm (x10)""
+    description: ""On death, keep your skills - no skill drain. Adds 10 charges. Best value.""
+    price: 1300
+    effect: add_charges
+    perk: soulkeeper
+    charges: 10
+
+  # ---------- Weekly-limited food (progression-gated) ----------
+  food_t1:
+    name: ""Swamp Feast (bundle)""
+    description: ""Sausages + Blood Pudding + Serpent Stew, x5 each. Requires Bonemass.""
+    price: 120
+    effect: grant_item
+    item: ""Sausages:5,BloodPudding:5,SerpentStew:5""
+    weekly_cap: 4
+    requires_boss: defeated_bonemass
+
+  food_t2:
+    name: ""Plains Feast (bundle)""
+    description: ""Lox Meat Pie + Bread + Fish Wraps, x5 each. Requires Yagluth.""
+    price: 180
+    effect: grant_item
+    item: ""LoxPie:5,Bread:5,FishWraps:5""
+    weekly_cap: 3
+    requires_boss: defeated_goblinking
+
+  food_t3:
+    name: ""Mistlands Feast (bundle)""
+    description: ""Misthare Supreme + Mushroom Omelette + Yggdrasil Porridge, x5 each. Requires the Queen.""
+    price: 260
+    effect: grant_item
+    item: ""MisthareSupreme:5,MushroomOmelette:5,YggdrasilPorridge:5""
+    weekly_cap: 2
+    requires_boss: defeated_queen
+
+  food_t4:
+    name: ""Ashlands Feast (bundle)""
+    description: ""Mashed Meat + Piquant Pie + Marinated Greens, x5 each. Requires the Ashlands boss.""
+    price: 350
+    effect: grant_item
+    item: ""MashedMeat:5,PiquantPie:5,MarinatedGreens:5""
+    weekly_cap: 2
+    requires_boss: defeated_fader
+
+  # ---------- Weekly-limited meads ----------
+  meads_utility:
+    name: ""Utility Meads (bundle)""
+    description: ""Tasty + Frost Resistance + Poison Resistance mead, x5 each.""
+    price: 100
+    effect: grant_item
+    item: ""MeadTasty:5,MeadFrostResist:5,MeadPoisonResist:5""
+    weekly_cap: 3
+
+  meads_vitality:
+    name: ""Vitality Meads (bundle)""
+    description: ""Medium Healing + Medium Stamina mead, x5 each. Requires Bonemass.""
+    price: 160
+    effect: grant_item
+    item: ""MeadHealthMedium:5,MeadStaminaMedium:5""
+    weekly_cap: 2
+    requires_boss: defeated_bonemass
+
+  meads_eitr:
+    name: ""Eitr Meads (bundle)""
+    description: ""Minor Eitr mead, x5. Requires the Queen.""
+    price: 160
+    effect: grant_item
+    item: ""MeadEitrMinor:5""
+    weekly_cap: 2
+    requires_boss: defeated_queen
+
+  # ---------- Weekly-limited materials ----------
+  farm_bundle:
+    name: ""Farmer's Crate""
+    description: ""Barley + Flax + Onion/Carrot/Turnip seeds, x20 each. Requires Yagluth (barley/flax).""
+    price: 120
+    effect: grant_item
+    item: ""Barley:20,Flax:20,OnionSeeds:20,CarrotSeeds:20,TurnipSeeds:20""
+    weekly_cap: 2
+    requires_boss: defeated_goblinking
+
+  forage_bundle:
+    name: ""Forager's Crate""
+    description: ""Coal x50, Resin x50, Feathers x50, Thistle/Dandelion/Honey x20. No gate.""
+    price: 100
+    effect: grant_item
+    item: ""Coal:50,Resin:50,Feathers:50,Thistle:20,Dandelion:20,Honey:20""
+    weekly_cap: 2
 ");
             Debug.LogWarning($"[Valcoin] Created shop catalog template at {CatalogPath}");
         }

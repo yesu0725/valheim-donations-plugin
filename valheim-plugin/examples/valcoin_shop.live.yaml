@@ -1,33 +1,23 @@
-# =====================================================================
-# Valcoin shop catalog — PROPOSED (ecosystem-aware, balance-guarded)
-# =====================================================================
-# Drop-in replacement for BepInEx/config/valcoin_shop.yaml.
-#
-# As of plugin v5.2.0 this IS the shipped default catalog (see Catalog.cs).
-# All fields/effects below are fully understood by the plugin and backend:
-#
-# Fields (Catalog.Sku + parser cases in Catalog.cs):
-#   item:          comma list of "prefab" or "prefab:qty" (grant_item effect)
-#   weekly_cap:    max purchases of this SKU per player per week (0 = unlimited)
-#   requires_boss: global boss key that must be set before this SKU is buyable
-#                  (defeated_bonemass | defeated_goblinking | defeated_queen |
-#                   defeated_fader | defeated_gdking | defeated_dragon | ...)
-#
-# Effect (ShopHandler.ApplyEffect + backend weekly counter in spend.py):
-#   grant_item     spawns the listed items into inventory (drop if full)
-#
-# grant_item pre-checks the boss gate + weekly cap BEFORE debiting coins,
-# but prefab validity is only checked at spawn time — a wrong prefab id
-# charges coins and skips that item. Verify any id you add against your
-# Valheim version.
-# =====================================================================
+# Valcoin shop catalog
+# -----------------------------------------------------------------------
+# Each SKU has:
+#   name:          what shows in the Shop tab (F8 panel / F4 Codex)
+#   description:   helper text
+#   price:         Valcoin cost
+#   effect:        grant_perk | add_charges | grant_item
+#   perk:          (perk effects) identifier the plugin understands
+#   charges:       (add_charges) how many uses each purchase grants
+#   item:          (grant_item) comma list of "prefab" or "prefab:qty"
+#   weekly_cap:    (grant_item) max purchases per player per week (0 = unlimited)
+#   requires_boss: (grant_item) global boss key gate, e.g. defeated_bonemass
+# Edit and restart the server to apply changes.
 
 shop:
 
   # ---------- Convenience: Soulkeeper Charm (death insurance) ----------
-  # add_charges credits a backend-tracked 'soulkeeper' charge pool. On death you
-  # keep your skills (no drain). PvE-safe: it only softens the death tax, never
-  # helps win a fight. Priced with a decoy so x10 reads as the obvious value.
+  # Charges of one shared 'soulkeeper' pool. On death you keep your skills (no
+  # skill drain). Never helps you win a fight - it only softens the death tax.
+  # Priced with a deliberate decoy: the x5 exists to make x10 the obvious buy.
   soulkeeper_1:
     name: "Soulkeeper Charm (x1)"
     description: "On death, keep your skills - no skill drain. Adds 1 charge."
@@ -82,10 +72,10 @@ shop:
 
   food_t4:
     name: "Ashlands Feast (bundle)"
-    description: "Top Ashlands dishes, x5 each. Requires the Ashlands boss."
+    description: "Mashed Meat + Piquant Pie + Marinated Greens, x5 each. Requires the Ashlands boss."
     price: 350
     effect: grant_item
-    item: "MashedMeat:5,PiquantPie:5,MarinatedGreens:5"   # verified Ashlands prefab ids
+    item: "MashedMeat:5,PiquantPie:5,MarinatedGreens:5"
     weekly_cap: 2
     requires_boss: defeated_fader
 

@@ -10,7 +10,7 @@ using HarmonyLib;
 // inherited BaseUnityPlugin.Config (a BepInEx ConfigFile) property.
 using PluginConfig = Config;
 
-[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.3.0")]
+[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.7.0")]
 public class Plugin : BaseUnityPlugin
 {
     public static HashSet<string> AdminSteamIDs = new HashSet<string>();
@@ -80,6 +80,12 @@ public class Plugin : BaseUnityPlugin
         var go = new GameObject("ValcoinDonationPanel");
         go.AddComponent<DonationPanel>();
         DontDestroyOnLoad(go);
+
+        // Keeps the local player's Soulkeeper charge count fresh so a death is
+        // warded even if the shop panel was never opened this session.
+        var sk = new GameObject("ValcoinSoulkeeperPoller");
+        sk.AddComponent<SoulkeeperPoller>();
+        DontDestroyOnLoad(sk);
     }
 
     // --- Admin YAML --------------------------------------------------------

@@ -58,6 +58,10 @@ public static class ShopHandler
             idempotency_key = key,
             // Backend enforces the weekly cap; 0 = unlimited (perk SKUs, etc.).
             weekly_cap = sku.Effect == "grant_item" ? sku.WeeklyCap : 0,
+            // add_charges SKUs credit a backend-tracked charge pool in the same
+            // spend tx (null for other effects so validation ignores them).
+            grant_charges = sku.Effect == "add_charges" ? (int?)sku.Charges : null,
+            charge_kind   = sku.Effect == "add_charges" ? sku.Perk : null,
         };
 
         SharedCoroutineRunner.Instance.StartCoroutine(BackendClient.Post<SpendResp>(
@@ -103,8 +107,9 @@ public static class ShopHandler
                 break;
 
             case "add_charges":
-                PerkManager.AddCharges(steam64, sku.Perk, sku.Charges);
-                tell($"Purchased \"{sku.Name}\" - +{sku.Charges} {sku.Perk} charge(s).");
+                // Charges are credited backend-side during /api/spend (see Buy);
+                // the client just refreshes state to see the new count.
+                tell($"Purchased \"{sku.Name}\" - +{sku.Charges} charge(s) added.");
                 break;
 
             case "grant_item":

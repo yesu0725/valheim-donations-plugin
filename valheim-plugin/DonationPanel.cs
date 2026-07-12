@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using UnityEngine;
 
 // Client-side in-game GUI for the donations system — the single, combined
@@ -19,8 +20,8 @@ using UnityEngine;
 // Tabs: Donate | Shop | Gift | Patrons | (Admin, admins only)
 public class DonationPanel : MonoBehaviour
 {
-    private const int PanelW = 560;
-    private const int PanelH = 560;
+    private const int PanelW = 640;
+    private const int PanelH = 760;   // desired height; clamped to the screen in OnGUI
 
     private enum Tab { Donate, Shop, Gift, Patrons, Admin }
     private Tab _tab = Tab.Donate;
@@ -37,6 +38,15 @@ public class DonationPanel : MonoBehaviour
     // Cached per-player state.
     private int _balance;
     private List<TopEntry> _topDonors = new List<TopEntry>();
+
+    // Shop state fetched from the backend (the client can't read server-side
+    // PerkManager or the backend spend ledger directly, so /api/state hands it
+    // over): SKUs already bought, purchases used this week, and when the weekly
+    // counters reset. Drives the "Already Purchased" / weekly-cap UI.
+    private HashSet<string> _ownedSkus = new HashSet<string>();
+    private Dictionary<string, int> _weeklyUsage = new Dictionary<string, int>();
+    private string _weekResetsIn = "";
+    private Dictionary<string, int> _charges = new Dictionary<string, int>();
 
     // Donate tab state.
     private string _donateCode;                  // null until a code arrives
@@ -57,11 +67,12 @@ public class DonationPanel : MonoBehaviour
     private Vector2 _logScroll;
 
     // Gift / title text fields.
-    private string _giftTo = "", _giftAmount = "", _titleText = "";
+    private string _giftTo = "", _giftAmount = "";
     private string _adminTarget = "", _adminAmount = "";
 
     private GUIStyle _bg, _hdr, _sub, _btn, _btnActive, _btnDim, _btnPrimary,
-                     _line, _logLine, _label, _codeBox, _linkBtn, _pillOn, _pillOff;
+                     _line, _logLine, _label, _codeBox, _linkBtn, _pillOn, _pillOff,
+                     _owned;
     private bool _stylesReady;
 
     private float _lastStateFetch;
@@ -130,6 +141,10 @@ public class DonationPanel : MonoBehaviour
     {
         public int balance;
         public TopEntry[] top_donors;
+        public string[] owned_skus;
+        public Dictionary<string, int> weekly_usage;
+        public string week_resets_in;
+        public Dictionary<string, int> charges;
     }
 
     private class TopEntry
@@ -161,61 +176,17 @@ public class DonationPanel : MonoBehaviour
                 }
                 _balance = r.balance;
                 _topDonors = r.top_donors != null ? new List<TopEntry>(r.top_donors) : new List<TopEntry>();
+                _ownedSkus = r.owned_skus != null ? new HashSet<string>(r.owned_skus) : new HashSet<string>();
+                _weeklyUsage = r.weekly_usage ?? new Dictionary<string, int>();
+                _weekResetsIn = r.week_resets_in ?? "";
+                _charges = r.charges ?? new Dictionary<string, int>();
+                _charges.TryGetValue(SoulkeeperState.Kind, out var sk);
+                SoulkeeperState.UpdateFromState(steam64, sk);
             });
     }
 
-    private string _cachedSteam64;
-
-    // Resolve THIS client's own Steam64. SteamIdResolver only handles remote
-    // peers (from their sockets); the local player has no peer entry, so we go
-    // straight to Steamworks. Cached once resolved so we don't reflect every
-    // refresh. Steamworks is available even at the main menu on a Steam client.
-    private string ResolveLocalSteam64()
-    {
-        if (!string.IsNullOrEmpty(_cachedSteam64)) return _cachedSteam64;
-
-        const System.Reflection.BindingFlags PubStatic =
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
-
-        // 1) Steamworks.NET — the canonical source of the local Steam64.
-        //    We scan loaded assemblies rather than guess the assembly name.
-        try
-        {
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                Type t;
-                try { t = asm.GetType("Steamworks.SteamUser"); } catch { continue; }
-                if (t == null) continue;
-
-                var cid = t.GetMethod("GetSteamID", PubStatic)?.Invoke(null, null);
-                var raw = cid?.GetType().GetField("m_SteamID")?.GetValue(cid)?.ToString();
-                if (!string.IsNullOrEmpty(raw) && raw.Length == 17 && raw.StartsWith("7656119"))
-                {
-                    _cachedSteam64 = raw;
-                    Debug.Log($"[Valcoin] Local Steam64 resolved via Steamworks: {raw}");
-                    return raw;
-                }
-            }
-        }
-        catch (Exception ex) { Debug.LogWarning("[Valcoin] Steamworks id lookup failed: " + ex.Message); }
-
-        // 2) Fallback: the older ZSteamMatchmaking.GetSteamID path.
-        try
-        {
-            var t = Type.GetType("ZSteamMatchmaking, assembly_valheim");
-            var inst = t?.GetField("instance", PubStatic)?.GetValue(null);
-            var id = inst?.GetType().GetMethod("GetSteamID")?.Invoke(inst, null)?.ToString();
-            if (!string.IsNullOrEmpty(id) && id.Length == 17 && id.StartsWith("7656119"))
-            {
-                _cachedSteam64 = id;
-                Debug.Log($"[Valcoin] Local Steam64 resolved via ZSteamMatchmaking: {id}");
-                return id;
-            }
-        }
-        catch { }
-
-        return null;
-    }
+    // Resolve THIS client's own Steam64 (shared resolver — see LocalIdentity).
+    private string ResolveLocalSteam64() => LocalIdentity.Steam64();
 
     // ─── server messages ────────────────────────────────────────────────────
 
@@ -266,14 +237,14 @@ public class DonationPanel : MonoBehaviour
         _bg.normal.background = SolidTex(new Color(0.08f, 0.07f, 0.05f, 0.98f));
         _bg.padding = new RectOffset(12, 12, 12, 12);
 
-        _hdr = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold };
+        _hdr = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold };
         _hdr.normal.textColor = new Color(0.87f, 0.72f, 0.42f);
 
-        _sub = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Italic, wordWrap = true };
+        _sub = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Italic, wordWrap = true };
         _sub.normal.textColor = new Color(0.75f, 0.72f, 0.62f);
 
-        _btn = new GUIStyle(GUI.skin.button) { fontSize = 13 };
-        _btn.padding = new RectOffset(10, 10, 6, 6);
+        _btn = new GUIStyle(GUI.skin.button) { fontSize = 15 };
+        _btn.padding = new RectOffset(10, 10, 7, 7);
         _btn.normal.textColor = new Color(0.94f, 0.92f, 0.86f);
         _btn.hover.textColor  = Color.white;
 
@@ -287,7 +258,7 @@ public class DonationPanel : MonoBehaviour
         // Prominent, high-contrast primary action (the donate button).
         // Vertical padding kept modest so the label sits centered at a normal
         // button height instead of floating in an oversized gold slab.
-        _btnPrimary = new GUIStyle(GUI.skin.button) { fontSize = 14, fontStyle = FontStyle.Bold };
+        _btnPrimary = new GUIStyle(GUI.skin.button) { fontSize = 16, fontStyle = FontStyle.Bold };
         _btnPrimary.alignment = TextAnchor.MiddleCenter;
         _btnPrimary.padding = new RectOffset(12, 12, 6, 6);
         _btnPrimary.normal.background = SolidTex(new Color(0.78f, 0.6f, 0.22f, 1f));
@@ -298,11 +269,15 @@ public class DonationPanel : MonoBehaviour
         _line = new GUIStyle();
         _line.normal.background = SolidTex(new Color(0.3f, 0.25f, 0.18f, 0.6f));
 
-        _logLine = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = true };
+        _logLine = new GUIStyle(GUI.skin.label) { fontSize = 14, wordWrap = true };
         _logLine.normal.textColor = new Color(0.9f, 0.9f, 0.85f);
 
-        _label = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = true };
+        _label = new GUIStyle(GUI.skin.label) { fontSize = 15, wordWrap = true };
         _label.normal.textColor = new Color(0.88f, 0.85f, 0.78f);
+
+        // Green "Already Purchased" marker for owned one-time perks.
+        _owned = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
+        _owned.normal.textColor = new Color(0.5f, 0.85f, 0.45f);
 
         // The donation code, shown big and bright in a dark box.
         _codeBox = new GUIStyle(GUI.skin.box) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
@@ -311,11 +286,11 @@ public class DonationPanel : MonoBehaviour
         _codeBox.padding = new RectOffset(8, 8, 10, 10);
 
         // "Terms of Use" rendered as a link.
-        _linkBtn = new GUIStyle(GUI.skin.label) { fontSize = 12 };
+        _linkBtn = new GUIStyle(GUI.skin.label) { fontSize = 14 };
         _linkBtn.normal.textColor = new Color(0.55f, 0.75f, 0.95f);
         _linkBtn.hover.textColor = new Color(0.75f, 0.88f, 1f);
 
-        _pillOn = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
+        _pillOn = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
         _pillOn.normal.textColor = new Color(0.5f, 0.85f, 0.45f);
 
         _pillOff = new GUIStyle(_pillOn);
@@ -345,7 +320,11 @@ public class DonationPanel : MonoBehaviour
             _open = false; return;
         }
 
-        var rect = new Rect((Screen.width - PanelW) / 2f, (Screen.height - PanelH) / 2f, PanelW, PanelH);
+        // Clamp to the screen so a tall panel is never drawn off the top/bottom
+        // edge (which would hide the lower tabs' content).
+        float pw = Mathf.Min(PanelW, Screen.width - 40);
+        float ph = Mathf.Min(PanelH, Screen.height - 40);
+        var rect = new Rect((Screen.width - pw) / 2f, (Screen.height - ph) / 2f, pw, ph);
         GUI.Box(rect, GUIContent.none, _bg);
 
         GUILayout.BeginArea(new Rect(rect.x + 14, rect.y + 14, rect.width - 28, rect.height - 28));
@@ -360,8 +339,7 @@ public class DonationPanel : MonoBehaviour
         GUILayout.EndHorizontal();
 
         GUILayout.Label($"Balance:  {_balance} Valcoins", _label);
-        var perks = string.Join(", ", PerksForLocalPlayer());
-        if (!string.IsNullOrEmpty(perks)) GUILayout.Label($"Perks: {perks}", _label);
+        DrawOwnedCharges();
         if (!_online)
             GUILayout.Label(Config.Ready
                 ? "Can't reach the donation service right now - you can still browse; it reconnects automatically."
@@ -404,9 +382,39 @@ public class DonationPanel : MonoBehaviour
         if (_showTerms) DrawTermsModal(rect);
     }
 
+    // Persistent summary of owned consumable charges, shown under the balance
+    // on every tab (not just the Shop, which the player might not open again
+    // after buying — e.g. to check "do I still have a Soulkeeper charge?"
+    // before heading into a fight).
+    private void DrawOwnedCharges()
+    {
+        bool any = false;
+        foreach (var kv in _charges)
+        {
+            if (kv.Value <= 0) continue;
+            if (!any) { GUILayout.BeginHorizontal(); any = true; GUILayout.Label("Charges:", _label, GUILayout.Width(70)); }
+            GUILayout.Label($"{ChargeLabel(kv.Key)} x{kv.Value}", _pillOn, GUILayout.ExpandWidth(false));
+            GUILayout.Space(10);
+        }
+        if (any) { GUILayout.FlexibleSpace(); GUILayout.EndHorizontal(); }
+    }
+
+    private static readonly Regex TierSuffix = new Regex(@"\s*\(x\d+\)\s*$");
+
+    // Charges are keyed by SKU.Perk (e.g. "soulkeeper"), not a display name.
+    // Derive one from any catalog SKU that grants this charge kind, stripping
+    // the per-tier "(xN)" suffix so "Soulkeeper Charm (x10)" -> "Soulkeeper Charm".
+    private string ChargeLabel(string kind)
+    {
+        foreach (var sku in Catalog.Items.Values)
+            if (sku.Effect == "add_charges" && sku.Perk == kind)
+                return TierSuffix.Replace(sku.Name, "").Trim();
+        return kind;
+    }
+
     private void TabButton(string label, Tab t)
     {
-        if (GUILayout.Button(label, _tab == t ? _btnActive : _btn, GUILayout.Height(28))) _tab = t;
+        if (GUILayout.Button(label, _tab == t ? _btnActive : _btn, GUILayout.Height(32))) _tab = t;
     }
 
     private void DrawHr()
@@ -512,68 +520,81 @@ public class DonationPanel : MonoBehaviour
         }
 
         _shopScroll = GUILayout.BeginScrollView(_shopScroll, GUILayout.ExpandHeight(true));
-        var steam64 = ResolveLocalSteam64();
 
         foreach (var sku in Catalog.Order)
         {
+            // Resolve this SKU's state from server-provided data.
+            bool ownedPerk = sku.Effect == "grant_perk" && OwnsSku(sku.Id);
+            bool gated     = sku.Effect == "grant_item"
+                             && !string.IsNullOrEmpty(sku.RequiresBoss)
+                             && !BossGateOk(sku.RequiresBoss);
+            int  cap       = sku.WeeklyCap;                       // 0 = unlimited
+            int  used      = WeeklyUsed(sku.Id);
+            int  remaining = cap > 0 ? Mathf.Max(0, cap - used) : -1;
+            bool capReached = cap > 0 && remaining <= 0;
+
             GUILayout.BeginHorizontal();
             GUILayout.Label($"{sku.Name}  -  {sku.Price}c", _label, GUILayout.ExpandWidth(true));
 
-            bool owned = sku.Effect == "grant_perk" && !string.IsNullOrEmpty(steam64)
-                          && PerkManager.Has(steam64, sku.Perk);
-            int charges = sku.Effect == "add_charges" && !string.IsNullOrEmpty(steam64)
-                            ? PerkManager.Charges(steam64, sku.Perk) : 0;
-
-            if (owned) GUILayout.Label("owned", _label, GUILayout.Width(80));
-            else if (charges > 0) GUILayout.Label($"x{charges} held", _label, GUILayout.Width(80));
-
-            if (!owned)
+            // Right-hand action column: exactly one of owned / locked / capped /
+            // buy / offline. One-time perks lose the Buy button once owned.
+            if (ownedPerk)
+                GUILayout.Label("Already Purchased", _owned, GUILayout.Width(160));
+            else if (gated)
+                DisabledButton("Locked", 110);
+            else if (capReached)
+                DisabledButton("Limit reached", 130);
+            else if (_online)
             {
-                if (_online)
-                {
-                    if (GUILayout.Button("Buy", _btn, GUILayout.Width(70)))
-                        RpcLayer.SendAction("buy:" + sku.Id);
-                }
-                else
-                {
-                    GUILayout.Label("Buy", _btnDim, GUILayout.Width(70));
-                }
+                if (GUILayout.Button("Buy", _btn, GUILayout.Width(90), GUILayout.Height(30)))
+                    RpcLayer.SendAction("buy:" + sku.Id);
             }
+            else
+                DisabledButton("Buy", 90);
             GUILayout.EndHorizontal();
 
-            // grant_item metadata: weekly cap + boss gate.
-            if (sku.Effect == "grant_item")
+            // Status note under the row.
+            if (gated)
+                GUILayout.Label($"    Unlocks after {FriendlyBoss(sku.RequiresBoss)}", _sub);
+            else if (sku.Effect == "grant_item" && cap > 0)
             {
-                string meta = "";
-                if (sku.WeeklyCap > 0) meta += $"max {sku.WeeklyCap}/week";
-                if (!string.IsNullOrEmpty(sku.RequiresBoss))
-                    meta += (meta.Length > 0 ? " - " : "") + $"needs {sku.RequiresBoss}";
-                if (meta.Length > 0) GUILayout.Label("    " + meta, _sub);
+                if (capReached)
+                    GUILayout.Label($"    Weekly limit reached - resets in {_weekResetsIn}", _sub);
+                else
+                    GUILayout.Label($"    {remaining} of {cap} left this week", _sub);
             }
+            else if (sku.Effect == "add_charges" && !string.IsNullOrEmpty(sku.Perk))
+            {
+                _charges.TryGetValue(sku.Perk, out var held);
+                GUILayout.Label($"    You hold {held} charge(s)", _sub);
+            }
+
             if (!string.IsNullOrEmpty(sku.Description))
                 GUILayout.Label("    " + sku.Description, _label);
-            GUILayout.Space(6);
+            GUILayout.Space(10);
         }
         GUILayout.EndScrollView();
 
         if (!_online)
-            GUILayout.Label("Purchasing activates once the donation service is online.", _sub);
+            GUILayout.Label("Purchasing activates once the donation service is online. "
+                            + "Owned perks and weekly limits refresh when it reconnects.", _sub);
     }
 
     // ─── Gift tab ─────────────────────────────────────────────────────────
 
     private void DrawGift()
     {
+        GUILayout.Label("Gift Valcoins", _hdr);
         GUILayout.Label("Send Valcoins to another player on the server.", _label);
         GUILayout.Space(4);
         GUILayout.BeginHorizontal();
-        GUILayout.Label("To:", _label, GUILayout.Width(50));
+        GUILayout.Label("To:", _label, GUILayout.Width(90));
         _giftTo = GUILayout.TextField(_giftTo ?? "", GUILayout.Width(200));
         GUILayout.EndHorizontal();
 
         GUILayout.BeginHorizontal();
-        GUILayout.Label("Amount:", _label, GUILayout.Width(50));
-        _giftAmount = GUILayout.TextField(_giftAmount ?? "", GUILayout.Width(80));
+        GUILayout.Label("Amount:", _label, GUILayout.Width(90));
+        _giftAmount = GUILayout.TextField(_giftAmount ?? "", GUILayout.Width(120));
         GUILayout.EndHorizontal();
 
         GUILayout.Space(6);
@@ -590,17 +611,6 @@ public class DonationPanel : MonoBehaviour
         else
         {
             GUILayout.Label("Send gift", _btnDim, GUILayout.Height(28), GUILayout.Width(140));
-        }
-
-        // Title editor (only if the perk is owned).
-        var steam64 = ResolveLocalSteam64();
-        if (!string.IsNullOrEmpty(steam64) && PerkManager.Has(steam64, "chat_title"))
-        {
-            GUILayout.Space(10);
-            GUILayout.Label("Chat title (leave empty and Set to clear):", _label);
-            _titleText = GUILayout.TextField(_titleText ?? "", GUILayout.Width(200));
-            if (GUILayout.Button("Set title", _btn, GUILayout.Width(110)))
-                RpcLayer.SendAction("title:" + (string.IsNullOrWhiteSpace(_titleText) ? "clear" : _titleText.Trim()));
         }
     }
 
@@ -637,15 +647,17 @@ public class DonationPanel : MonoBehaviour
     private void DrawAdmin()
     {
         GUILayout.Label("Manually adjust a player's Valcoin balance.", _label);
+        GUILayout.Label("Give adds Valcoins to the player; Remove subtracts them "
+                        + "(e.g. to correct a mistake or claw back an abuse).", _sub);
         GUILayout.Space(4);
         GUILayout.BeginHorizontal();
-        GUILayout.Label("Player:", _label, GUILayout.Width(60));
+        GUILayout.Label("Player:", _label, GUILayout.Width(90));
         _adminTarget = GUILayout.TextField(_adminTarget ?? "", GUILayout.Width(200));
         GUILayout.EndHorizontal();
 
         GUILayout.BeginHorizontal();
-        GUILayout.Label("Amount:", _label, GUILayout.Width(60));
-        _adminAmount = GUILayout.TextField(_adminAmount ?? "", GUILayout.Width(80));
+        GUILayout.Label("Amount:", _label, GUILayout.Width(90));
+        _adminAmount = GUILayout.TextField(_adminAmount ?? "", GUILayout.Width(120));
         GUILayout.EndHorizontal();
 
         GUILayout.Space(6);
@@ -742,12 +754,53 @@ public class DonationPanel : MonoBehaviour
         "Thank you for supporting the realm!",
     };
 
-    private IEnumerable<string> PerksForLocalPlayer()
+    // ─── shop-state helpers ─────────────────────────────────────────────────
+
+    private bool OwnsSku(string skuId) =>
+        !string.IsNullOrEmpty(skuId) && _ownedSkus.Contains(skuId);
+
+    private int WeeklyUsed(string skuId) =>
+        (!string.IsNullOrEmpty(skuId) && _weeklyUsage.TryGetValue(skuId, out var c)) ? c : 0;
+
+    // Client-side boss gate. Global keys replicate to connected clients, so this
+    // mirrors ShopHandler.BossGateSatisfied and fails open if the key system
+    // isn't ready yet (gating is a balance nicety, not a security control — the
+    // server re-checks at purchase time regardless).
+    private static bool BossGateOk(string bossKey)
     {
-        var s = ResolveLocalSteam64();
-        if (string.IsNullOrEmpty(s)) yield break;
-        if (PerkManager.Has(s, "donor_badge"))     yield return "donor_badge";
-        if (PerkManager.Has(s, "chat_title"))      yield return "chat_title";
-        if (PerkManager.Has(s, "companion_flair")) yield return "companion_flair";
+        if (string.IsNullOrEmpty(bossKey)) return true;
+        try
+        {
+            if (ZoneSystem.instance == null) return true;
+            return ZoneSystem.instance.GetGlobalKey(bossKey);
+        }
+        catch { return true; }
     }
+
+    // A greyed, non-interactive button placeholder used for locked / capped /
+    // offline states so they read like a disabled Buy button.
+    private void DisabledButton(string label, float width)
+    {
+        GUILayout.Label(label, _btnDim, GUILayout.Width(width), GUILayout.Height(30));
+    }
+
+    // "defeated_bonemass" -> "Bonemass" for the gate note.
+    private static string FriendlyBoss(string key)
+    {
+        switch (key)
+        {
+            case "defeated_eikthyr":    return "Eikthyr";
+            case "defeated_gdking":     return "The Elder";
+            case "defeated_bonemass":   return "Bonemass";
+            case "defeated_dragon":     return "Moder";
+            case "defeated_goblinking": return "Yagluth";
+            case "defeated_queen":      return "The Queen";
+            case "defeated_fader":      return "the Ashlands boss";
+            default:
+                var s = (key != null && key.StartsWith("defeated_"))
+                    ? key.Substring("defeated_".Length) : (key ?? "");
+                return s.Length > 0 ? char.ToUpper(s[0]) + s.Substring(1) : (key ?? "");
+        }
+    }
+
 }

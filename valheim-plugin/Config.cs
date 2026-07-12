@@ -18,6 +18,13 @@ public static class Config
     public static bool   WelcomeEnabled { get; private set; } = true;
     public static string WelcomeMessage { get; private set; }   // null → auto
 
+    // Soulkeeper Phase 2 (prototype): after a warded death, the Valkyrie picks
+    // the player up at the spawn point (20s after respawn) and flies them the
+    // real route to their tombstone. This flag gates that cutscene; off (or on
+    // any failure/stall — a watchdog guards the flight) it degrades to a plain
+    // distant teleport to the grave after the same countdown.
+    public static bool   ValkyrieCarryVisual { get; private set; } = true;
+
     // "Ready" means we have real, non-placeholder credentials. The template
     // values ("your-app.fly.dev" / "paste-the-...") are non-empty but useless —
     // treating them as ready made the panel log "Backend ready: True" and then
@@ -50,6 +57,8 @@ public static class Config
                     WelcomeEnabled = (bool)json["welcome_message_enabled"];
                 if (json["welcome_message"] != null)
                     WelcomeMessage = (string)json["welcome_message"];
+                if (json["valkyrie_carry_visual"] != null)
+                    ValkyrieCarryVisual = (bool)json["valkyrie_carry_visual"];
             }
             else
             {
@@ -62,7 +71,9 @@ public static class Config
   ""ui_toggle_key"": ""F8"",
   ""codex_toggle_key"": ""F4"",
   ""welcome_message_enabled"": true,
-  ""welcome_message"": null
+  ""welcome_message"": null,
+
+  ""valkyrie_carry_visual"": true
 }
 ");
                 Debug.LogWarning($"[Valcoin] Created template config at {path}. Fill in backend_url + plugin_token.");

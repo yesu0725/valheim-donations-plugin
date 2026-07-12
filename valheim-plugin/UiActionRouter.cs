@@ -44,7 +44,6 @@ public static class UiActionRouter
             case "donate":       DonateFlow.Run(steam64, senderName, Reply); break;
             case "buy":          ShopHandler.Buy(steam64, rest.Trim().ToLowerInvariant(), Reply); break;
             case "gift":         DoGift(steam64, senderName, rest, Reply); break;
-            case "title":        DoTitle(steam64, rest, Reply); break;
             case "topdonors":    TopDonorsFetcher.Fetch(reply => Reply(reply)); break;
             case "whoami":       Reply("__ADMIN__:" + IsAdmin(steam64).ToString().ToLowerInvariant()); break;
             case "admin_give":   DoAdminAdjust(steam64, rest, Reply, give: true); break;
@@ -111,22 +110,5 @@ public static class UiActionRouter
         { reply("Amount must be a positive number."); return; }
 
         GiftFlow.Run(fromSteam64, fromName, parts[0].Trim(), amount, reply);
-    }
-
-    private static void DoTitle(string steam64, string rest, Action<string> reply)
-    {
-        if (string.IsNullOrEmpty(steam64)) { reply("Couldn't resolve your Steam ID."); return; }
-        if (!PerkManager.Has(steam64, "chat_title"))
-        { reply("You need the \"chat_title\" perk. Buy it from the Shop tab."); return; }
-
-        if (rest.Equals("clear", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(rest))
-        { PerkManager.SetTitle(steam64, null); reply("Title cleared."); return; }
-
-        if (rest.Length > 16) { reply("16 characters or fewer."); return; }
-        if (!System.Text.RegularExpressions.Regex.IsMatch(rest, @"^[\w \-'\.!?]+$"))
-        { reply("Letters, numbers and basic punctuation only."); return; }
-
-        PerkManager.SetTitle(steam64, rest);
-        reply($"Title set to [{rest}].");
     }
 }
