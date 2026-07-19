@@ -48,6 +48,10 @@ public class DonationPanel : MonoBehaviour
     private string _weekResetsIn = "";
     private Dictionary<string, int> _charges = new Dictionary<string, int>();
 
+    // Authoritative Valcoins-per-USD rate from the backend (0 until first state
+    // fetch), shown as an exchange-rate note on the Donate and Shop tabs.
+    private float _coinsPerUsd;
+
     // Donate tab state.
     private string _donateCode;                  // null until a code arrives
     private string _donateUrl;
@@ -61,6 +65,26 @@ public class DonationPanel : MonoBehaviour
     private bool _showTerms;
     private Vector2 _termsScroll;
 
+    // Purchase-confirm modal — the SKU awaiting a Yes/Cancel decision. The Buy
+    // button only stages the SKU here; the spend RPC fires on "Yes".
+    private Catalog.Sku _confirmSku;
+
+    // Image-zoom overlay: the preview source currently shown full-size, plus the
+    // SKU name to caption it with. Set by clicking any preview thumbnail; drawn
+    // above every other modal so it can be opened from the confirm dialog and
+    // dismissed back to it.
+    private string _zoomImage;
+    private string _zoomCaption;
+
+    // Purchase-result modal — after "Yes" we arm a pending purchase; the next
+    // plain server reply becomes a success/failure modal (with a timeout
+    // fallback if the server never answers, e.g. connection dropped mid-buy).
+    private string _pendingBuySku;
+    private float  _pendingBuyDeadline;
+    private string _resultText;      // non-null => result modal is up
+    private bool   _resultSuccess;
+    private string _resultExtra;     // e.g. armor-effect apply outcome
+
     // Buffer for server-pushed messages (buy/gift/admin results).
     private readonly List<string> _log = new List<string>();
     private const int LogCap = 12;
@@ -72,7 +96,7 @@ public class DonationPanel : MonoBehaviour
 
     private GUIStyle _bg, _hdr, _sub, _btn, _btnActive, _btnDim, _btnPrimary,
                      _line, _logLine, _label, _codeBox, _linkBtn, _pillOn, _pillOff,
-                     _owned;
+                     _owned, _catHdr, _dim, _rateBox, _rateSub;
     private bool _stylesReady;
 
     private float _lastStateFetch;
@@ -145,6 +169,7 @@ public class DonationPanel : MonoBehaviour
         public Dictionary<string, int> weekly_usage;
         public string week_resets_in;
         public Dictionary<string, int> charges;
+        public float coins_per_usd;
     }
 
     private class TopEntry
@@ -180,6 +205,7 @@ public class DonationPanel : MonoBehaviour
                 _weeklyUsage = r.weekly_usage ?? new Dictionary<string, int>();
                 _weekResetsIn = r.week_resets_in ?? "";
                 _charges = r.charges ?? new Dictionary<string, int>();
+                _coinsPerUsd = r.coins_per_usd;
                 _charges.TryGetValue(SoulkeeperState.Kind, out var sk);
                 SoulkeeperState.UpdateFromState(steam64, sk);
             });
@@ -193,6 +219,7 @@ public class DonationPanel : MonoBehaviour
     private const string AdminStatusPrefix = "__ADMIN__:";
     private const string DonateOkPrefix     = "__DONATE__:";
     private const string DonateErrPrefix    = "__DONATE_ERR__:";
+    private const string ArmorVfxPrefix     = "__ARMORVFX__:";
 
     private void OnServerMessage(string msg)
     {
@@ -223,9 +250,35 @@ public class DonationPanel : MonoBehaviour
             return;
         }
 
+        if (msg.StartsWith(ArmorVfxPrefix))
+        {
+            // Format: <aura>:<slot>. The spend already succeeded server-side;
+            // apply the cosmetic + rename on this (the buyer's) client, and log
+            // whatever it reports (success line or "equip a piece first").
+            var body = msg.Substring(ArmorVfxPrefix.Length).Split(new[] { ':' }, 2);
+            string m;
+            if (body.Length == 2) ArmorVfx.ApplyToEquipped(body[0], body[1], out m);
+            else m = "Armor effect could not be applied.";
+            _log.Add(m);
+            if (_log.Count > LogCap) _log.RemoveAt(0);
+            // Fold the apply outcome into the pending purchase-result modal.
+            if (_pendingBuySku != null) _resultExtra = m;
+            return;
+        }
+
         // Everything else is a buy/gift/admin result line.
         _log.Add(msg);
         if (_log.Count > LogCap) _log.RemoveAt(0);
+
+        // If a purchase is awaiting its outcome, this reply is it — surface it
+        // as a modal (success = the known "it worked" phrasings from ShopHandler).
+        if (_pendingBuySku != null)
+        {
+            _pendingBuySku = null;
+            _resultSuccess = msg.StartsWith("Purchased") || msg.Contains("was already processed");
+            _resultText = string.IsNullOrEmpty(_resultExtra) ? msg : msg + "\n\n" + _resultExtra;
+            _resultExtra = null;
+        }
         RefreshStateSoon();
     }
 
@@ -233,9 +286,12 @@ public class DonationPanel : MonoBehaviour
 
     private void InitStyles()
     {
+        // Dark-wood panel with a bronze frame (Valheim-style).
         _bg = new GUIStyle(GUI.skin.box);
-        _bg.normal.background = SolidTex(new Color(0.08f, 0.07f, 0.05f, 0.98f));
-        _bg.padding = new RectOffset(12, 12, 12, 12);
+        _bg.normal.background = BorderTex(new Color(0.09f, 0.08f, 0.06f, 0.985f),
+                                          new Color(0.42f, 0.32f, 0.16f, 1f), 2);
+        _bg.border = new RectOffset(3, 3, 3, 3);
+        _bg.padding = new RectOffset(14, 14, 14, 14);
 
         _hdr = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold };
         _hdr.normal.textColor = new Color(0.87f, 0.72f, 0.42f);
@@ -243,28 +299,48 @@ public class DonationPanel : MonoBehaviour
         _sub = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Italic, wordWrap = true };
         _sub.normal.textColor = new Color(0.75f, 0.72f, 0.62f);
 
+        // Dark bronze-trimmed button; brightens on hover.
         _btn = new GUIStyle(GUI.skin.button) { fontSize = 15 };
+        _btn.border = new RectOffset(3, 3, 3, 3);
         _btn.padding = new RectOffset(10, 10, 7, 7);
-        _btn.normal.textColor = new Color(0.94f, 0.92f, 0.86f);
-        _btn.hover.textColor  = Color.white;
+        _btn.normal.background = BorderTex(new Color(0.17f, 0.14f, 0.10f, 1f),
+                                          new Color(0.46f, 0.36f, 0.19f, 1f), 2);
+        _btn.hover.background  = BorderTex(new Color(0.26f, 0.21f, 0.13f, 1f),
+                                          new Color(0.68f, 0.53f, 0.27f, 1f), 2);
+        _btn.active.background = _btn.hover.background;
+        _btn.normal.textColor = new Color(0.92f, 0.86f, 0.72f);
+        _btn.hover.textColor  = new Color(1f, 0.96f, 0.86f);
 
+        // Selected tab: filled bronze.
         _btnActive = new GUIStyle(_btn);
-        _btnActive.normal.background = SolidTex(new Color(0.6f, 0.45f, 0.2f, 1f));
-        _btnActive.normal.textColor = Color.white;
+        _btnActive.normal.background = BorderTex(new Color(0.5f, 0.38f, 0.18f, 1f),
+                                                new Color(0.72f, 0.57f, 0.29f, 1f), 2);
+        _btnActive.hover.background = _btnActive.normal.background;
+        _btnActive.normal.textColor = new Color(1f, 0.97f, 0.88f);
+        _btnActive.hover.textColor  = Color.white;
 
+        // Disabled/inert button (owned/locked/capped states).
         _btnDim = new GUIStyle(_btn);
+        _btnDim.normal.background = BorderTex(new Color(0.13f, 0.12f, 0.10f, 1f),
+                                             new Color(0.30f, 0.26f, 0.18f, 1f), 2);
+        _btnDim.hover.background = _btnDim.normal.background;
         _btnDim.normal.textColor = new Color(0.5f, 0.48f, 0.42f);
+        _btnDim.hover.textColor  = new Color(0.5f, 0.48f, 0.42f);
 
         // Prominent, high-contrast primary action (the donate button).
         // Vertical padding kept modest so the label sits centered at a normal
         // button height instead of floating in an oversized gold slab.
         _btnPrimary = new GUIStyle(GUI.skin.button) { fontSize = 16, fontStyle = FontStyle.Bold };
         _btnPrimary.alignment = TextAnchor.MiddleCenter;
+        _btnPrimary.border = new RectOffset(3, 3, 3, 3);
         _btnPrimary.padding = new RectOffset(12, 12, 6, 6);
-        _btnPrimary.normal.background = SolidTex(new Color(0.78f, 0.6f, 0.22f, 1f));
+        _btnPrimary.normal.background = BorderTex(new Color(0.78f, 0.6f, 0.22f, 1f),
+                                                 new Color(0.5f, 0.36f, 0.12f, 1f), 2);
         _btnPrimary.normal.textColor = new Color(0.12f, 0.08f, 0.02f);   // near-black on gold, high contrast
-        _btnPrimary.hover.background = SolidTex(new Color(0.9f, 0.71f, 0.28f, 1f));
+        _btnPrimary.hover.background = BorderTex(new Color(0.9f, 0.71f, 0.28f, 1f),
+                                                new Color(0.6f, 0.44f, 0.16f, 1f), 2);
         _btnPrimary.hover.textColor = Color.black;
+        _btnPrimary.active.background = _btnPrimary.normal.background;
 
         _line = new GUIStyle();
         _line.normal.background = SolidTex(new Color(0.3f, 0.25f, 0.18f, 0.6f));
@@ -296,6 +372,40 @@ public class DonationPanel : MonoBehaviour
         _pillOff = new GUIStyle(_pillOn);
         _pillOff.normal.textColor = new Color(0.85f, 0.6f, 0.3f);
 
+        // Shop category header — gold, bold, all-caps look (caller upper-cases).
+        _catHdr = new GUIStyle(GUI.skin.label) { fontSize = 17, fontStyle = FontStyle.Bold };
+        _catHdr.normal.textColor = new Color(0.85f, 0.68f, 0.34f);
+
+        // Dim secondary line for auto-derived bundle contents.
+        _dim = new GUIStyle(GUI.skin.label) { fontSize = 13, wordWrap = true };
+        _dim.normal.textColor = new Color(0.62f, 0.60f, 0.53f);
+
+        // Exchange-rate callout on the Donate tab — the one number donors most
+        // want before they open their wallet, so it gets a bright gold framed
+        // box rather than the usual muted helper-text treatment.
+        _rateBox = new GUIStyle(GUI.skin.box) { fontSize = 24, fontStyle = FontStyle.Bold,
+                                                alignment = TextAnchor.MiddleCenter, wordWrap = false };
+        _rateBox.normal.background = BorderTex(new Color(0.16f, 0.13f, 0.07f, 1f),
+                                               new Color(0.72f, 0.56f, 0.24f, 1f), 2);
+        _rateBox.normal.textColor = new Color(1f, 0.86f, 0.45f);
+        _rateBox.border = new RectOffset(3, 3, 3, 3);
+        _rateBox.padding = new RectOffset(10, 10, 12, 6);
+
+        // Caption under the callout (inside the same visual block).
+        _rateSub = new GUIStyle(GUI.skin.label) { fontSize = 13, alignment = TextAnchor.MiddleCenter, wordWrap = true };
+        _rateSub.normal.textColor = new Color(0.75f, 0.72f, 0.62f);
+
+        // Swap every style over to Valheim's own font (if we found it) so the
+        // panel reads as part of the game. Serif metrics are a touch taller than
+        // the IMGUI default, so line heights get a hair more room — sizes above
+        // were chosen to stay clear of clipping either way.
+        var font = GameFont();
+        if (font != null)
+            foreach (var s in new[] { _hdr, _sub, _btn, _btnActive, _btnDim, _btnPrimary,
+                                      _logLine, _label, _codeBox, _linkBtn, _pillOn, _pillOff,
+                                      _owned, _catHdr, _dim, _rateBox, _rateSub })
+                s.font = font;
+
         _stylesReady = true;
     }
 
@@ -305,6 +415,58 @@ public class DonationPanel : MonoBehaviour
         t.SetPixel(0, 0, c);
         t.Apply();
         return t;
+    }
+
+    // A 9-slice-able panel/button texture: a solid fill with a `t`-pixel border,
+    // used with GUIStyle.border so the frame stays crisp at any size. Gives the
+    // IMGUI panel Valheim's dark-wood-with-bronze-trim look without needing the
+    // game's own UI sprites (which aren't reachable without Jotunn).
+    private static Texture2D BorderTex(Color fill, Color border, int t = 2, int size = 16)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        var px = new Color[size * size];
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+                px[y * size + x] = (x < t || y < t || x >= size - t || y >= size - t) ? border : fill;
+        tex.SetPixels(px);
+        tex.Apply();
+        tex.filterMode = FilterMode.Point;
+        tex.wrapMode = TextureWrapMode.Clamp;
+        return tex;
+    }
+
+    // Valheim's own UI font, so our text matches the game. Found among the
+    // loaded fonts by name (AveriaSerifLibre is the body serif; Norse the
+    // runic display face). Falls back to the IMGUI default if neither is
+    // present, so a font-name change in a future Valheim build just reverts to
+    // plain text rather than breaking.
+    private static Font _gameFont;
+    private static bool _gameFontSearched;
+    private static Font GameFont()
+    {
+        if (_gameFontSearched) return _gameFont;
+        _gameFontSearched = true;
+        try
+        {
+            var fonts = Resources.FindObjectsOfTypeAll<Font>();
+            // Prefer the regular serif for body text (headers synthesize bold via
+            // fontStyle); fall back through the runic display faces.
+            string[] prefs = { "AveriaSerifLibre-Regular", "AveriaSerifLibre", "Averia", "Norse" };
+            foreach (var pref in prefs)
+            {
+                foreach (var f in fonts)
+                    if (f != null && !string.IsNullOrEmpty(f.name)
+                        && f.name.IndexOf(pref, StringComparison.OrdinalIgnoreCase) >= 0)
+                    { _gameFont = f; break; }
+                if (_gameFont != null) break;
+            }
+            Debug.Log($"[Valcoin] UI font: {(_gameFont != null ? _gameFont.name : "default (Valheim font not found)")}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[Valcoin] Font lookup failed: {ex.Message}");
+        }
+        return _gameFont;
     }
 
     // ─── render ───────────────────────────────────────────────────────────
@@ -326,6 +488,21 @@ public class DonationPanel : MonoBehaviour
         float ph = Mathf.Min(PanelH, Screen.height - 40);
         var rect = new Rect((Screen.width - pw) / 2f, (Screen.height - ph) / 2f, pw, ph);
         GUI.Box(rect, GUIContent.none, _bg);
+
+        // Pending purchase that never got a reply → failure modal via timeout.
+        if (_pendingBuySku != null && Time.realtimeSinceStartup > _pendingBuyDeadline)
+        {
+            _pendingBuySku = null;
+            _resultSuccess = false;
+            _resultText = "No response from the server. Check your balance and the "
+                          + "message log before retrying - the purchase may still have gone through.";
+        }
+
+        // While a modal is up, disable + dim the panel behind it so its buttons
+        // can't be clicked through the overlay (IMGUI renders disabled controls
+        // greyed, which reads as a native modal backdrop).
+        bool modalOpen = _showTerms || _confirmSku != null || _resultText != null || _zoomImage != null;
+        GUI.enabled = !modalOpen;
 
         GUILayout.BeginArea(new Rect(rect.x + 14, rect.y + 14, rect.width - 28, rect.height - 28));
 
@@ -378,8 +555,46 @@ public class DonationPanel : MonoBehaviour
 
         GUILayout.EndArea();
 
-        // Terms modal draws last so it sits on top of everything.
-        if (_showTerms) DrawTermsModal(rect);
+        // Modals draw last, at full opacity, so they sit above the dimmed panel.
+        // Result outranks confirm (a result can only exist after a confirm).
+        // Zoom outranks everything: it can be opened from the confirm dialog, and
+        // closing it must fall back to whatever was underneath.
+        GUI.enabled = true;
+        if (_zoomImage != null) DrawZoomModal();
+        else if (_showTerms) DrawTermsModal(rect);
+        else if (_resultText != null) DrawResultModal();
+        else if (_confirmSku != null) DrawConfirmModal();
+    }
+
+    // ─── Purchase result modal ──────────────────────────────────────────────
+
+    private void DrawResultModal()
+    {
+        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _line);
+
+        int w = Mathf.Min(460, Screen.width - 60);
+        int h = Mathf.Min(260, Screen.height - 60);
+        var r = new Rect((Screen.width - w) / 2f, (Screen.height - h) / 2f, w, h);
+        GUI.Box(r, GUIContent.none, _bg);
+
+        GUILayout.BeginArea(new Rect(r.x + 18, r.y + 18, r.width - 36, r.height - 36));
+
+        // Green title on success, ember-orange on failure (matches the Live/
+        // Offline pill colors used in the header).
+        var prev = GUI.contentColor;
+        GUI.contentColor = _resultSuccess ? new Color(0.5f, 0.85f, 0.45f) : new Color(0.95f, 0.55f, 0.3f);
+        GUILayout.Label(_resultSuccess ? "Purchase Complete" : "Purchase Failed", _hdr);
+        GUI.contentColor = prev;
+
+        DrawHr();
+        GUILayout.Space(8);
+        GUILayout.Label(_resultText, _label);
+
+        GUILayout.FlexibleSpace();
+        if (GUILayout.Button("OK", _btnPrimary, GUILayout.Height(38)))
+            _resultText = null;
+
+        GUILayout.EndArea();
     }
 
     // Persistent summary of owned consumable charges, shown under the balance
@@ -431,7 +646,8 @@ public class DonationPanel : MonoBehaviour
         GUILayout.Label(
             "Donating is always optional. Playing is free, and every perk is cosmetic " +
             "or a weekly-limited supply - never raw power.", _sub);
-        GUILayout.Space(6);
+        GUILayout.Space(8);
+        DrawRateCallout();
 
         GUILayout.Label("How it works", _label);
         GUILayout.Label("1.  Click \"Get my donation code\" below to generate your personal code.", _label);
@@ -508,6 +724,42 @@ public class DonationPanel : MonoBehaviour
         GUILayout.EndHorizontal();
     }
 
+    // Big gold "$1 USD = N Valcoins" callout for the Donate tab. The rate is
+    // backend-supplied; if the service is reachable but didn't report one (an
+    // older backend that predates coins_per_usd), say so explicitly rather than
+    // rendering nothing — a silently missing rate is indistinguishable from a
+    // bug, and this is the number donors look for first.
+    private void DrawRateCallout()
+    {
+        if (_coinsPerUsd > 0f)
+        {
+            GUILayout.Box($"$1 USD  =  {FormatRate(_coinsPerUsd)} Valcoins", _rateBox,
+                          GUILayout.Height(52), GUILayout.ExpandWidth(true));
+            GUILayout.Label($"Example: a $5 donation credits about {FormatRate(_coinsPerUsd * 5f)} Valcoins. "
+                            + "Other currencies are converted at the same value.", _rateSub);
+        }
+        else if (_online)
+        {
+            GUILayout.Box("Exchange rate unavailable", _rateBox, GUILayout.Height(52), GUILayout.ExpandWidth(true));
+            GUILayout.Label("The donation service didn't report a rate - ask the operator to update it.", _rateSub);
+        }
+        GUILayout.Space(8);
+    }
+
+    // Compact one-line variant for the Shop tab, where prices are the focus and
+    // the rate is only context. Hidden when unknown.
+    private void DrawRateNote()
+    {
+        if (_coinsPerUsd <= 0f) return;
+        GUILayout.Label($"Exchange rate: $1 USD = {FormatRate(_coinsPerUsd)} Valcoins.", _sub);
+    }
+
+    // Whole rates read as "50"; fractional ones keep one decimal ("52.5").
+    private static string FormatRate(float rate) =>
+        Mathf.Approximately(rate, Mathf.Round(rate))
+            ? Mathf.RoundToInt(rate).ToString()
+            : rate.ToString("0.0");
+
     // ─── Shop tab ─────────────────────────────────────────────────────────
 
     private Vector2 _shopScroll;
@@ -519,65 +771,175 @@ public class DonationPanel : MonoBehaviour
             return;
         }
 
+        DrawRateNote();
+
         _shopScroll = GUILayout.BeginScrollView(_shopScroll, GUILayout.ExpandHeight(true));
 
+        // Group SKUs by category, preserving catalog (file) order for both the
+        // categories and the items within them. Uncategorised SKUs fall into a
+        // trailing "More" group so nothing is ever dropped.
+        var catOrder = new List<string>();
+        var byCat = new Dictionary<string, List<Catalog.Sku>>();
         foreach (var sku in Catalog.Order)
         {
-            // Resolve this SKU's state from server-provided data.
-            bool ownedPerk = sku.Effect == "grant_perk" && OwnsSku(sku.Id);
-            bool gated     = sku.Effect == "grant_item"
-                             && !string.IsNullOrEmpty(sku.RequiresBoss)
-                             && !BossGateOk(sku.RequiresBoss);
-            int  cap       = sku.WeeklyCap;                       // 0 = unlimited
-            int  used      = WeeklyUsed(sku.Id);
-            int  remaining = cap > 0 ? Mathf.Max(0, cap - used) : -1;
-            bool capReached = cap > 0 && remaining <= 0;
-
-            GUILayout.BeginHorizontal();
-            GUILayout.Label($"{sku.Name}  -  {sku.Price}c", _label, GUILayout.ExpandWidth(true));
-
-            // Right-hand action column: exactly one of owned / locked / capped /
-            // buy / offline. One-time perks lose the Buy button once owned.
-            if (ownedPerk)
-                GUILayout.Label("Already Purchased", _owned, GUILayout.Width(160));
-            else if (gated)
-                DisabledButton("Locked", 110);
-            else if (capReached)
-                DisabledButton("Limit reached", 130);
-            else if (_online)
+            var cat = string.IsNullOrEmpty(sku.Category) ? "More" : sku.Category;
+            if (!byCat.TryGetValue(cat, out var list))
             {
-                if (GUILayout.Button("Buy", _btn, GUILayout.Width(90), GUILayout.Height(30)))
-                    RpcLayer.SendAction("buy:" + sku.Id);
+                list = new List<Catalog.Sku>();
+                byCat[cat] = list;
+                catOrder.Add(cat);
             }
-            else
-                DisabledButton("Buy", 90);
-            GUILayout.EndHorizontal();
-
-            // Status note under the row.
-            if (gated)
-                GUILayout.Label($"    Unlocks after {FriendlyBoss(sku.RequiresBoss)}", _sub);
-            else if (sku.Effect == "grant_item" && cap > 0)
-            {
-                if (capReached)
-                    GUILayout.Label($"    Weekly limit reached - resets in {_weekResetsIn}", _sub);
-                else
-                    GUILayout.Label($"    {remaining} of {cap} left this week", _sub);
-            }
-            else if (sku.Effect == "add_charges" && !string.IsNullOrEmpty(sku.Perk))
-            {
-                _charges.TryGetValue(sku.Perk, out var held);
-                GUILayout.Label($"    You hold {held} charge(s)", _sub);
-            }
-
-            if (!string.IsNullOrEmpty(sku.Description))
-                GUILayout.Label("    " + sku.Description, _label);
-            GUILayout.Space(10);
+            list.Add(sku);
         }
+
+        for (int c = 0; c < catOrder.Count; c++)
+        {
+            var cat = catOrder[c];
+            var list = byCat[cat];
+            if (c > 0) { GUILayout.Space(6); DrawHr(); GUILayout.Space(4); }
+            DrawCategory(cat, list);
+        }
+
         GUILayout.EndScrollView();
 
         if (!_online)
             GUILayout.Label("Purchasing activates once the donation service is online. "
                             + "Owned perks and weekly limits refresh when it reconnects.", _sub);
+    }
+
+    // One category block: header, a single blurb, an optional "you hold N"
+    // line for charge pools, then a compact row per item.
+    private void DrawCategory(string category, List<Catalog.Sku> skus)
+    {
+        GUILayout.Label(category.ToUpperInvariant(), _catHdr);
+
+        // Blurb = the first non-empty category_desc among the group's SKUs.
+        string blurb = null;
+        foreach (var s in skus)
+            if (!string.IsNullOrEmpty(s.CategoryDesc)) { blurb = s.CategoryDesc; break; }
+        if (!string.IsNullOrEmpty(blurb))
+            GUILayout.Label(blurb, _sub);
+
+        // If this group is a charge pool, surface the held count once (not per
+        // tier). All tiers of a pool share one Perk key.
+        foreach (var s in skus)
+            if (s.Effect == "add_charges" && !string.IsNullOrEmpty(s.Perk))
+            {
+                _charges.TryGetValue(s.Perk, out var held);
+                GUILayout.Label($"You currently hold {held} charge(s).", _sub);
+                break;
+            }
+
+        GUILayout.Space(4);
+        foreach (var sku in skus)
+            DrawSkuRow(sku);
+    }
+
+    // A single compact item row: name + price + one action, with a dim
+    // auto-derived contents line and a state note where relevant.
+    private void DrawSkuRow(Catalog.Sku sku)
+    {
+        bool ownedPerk = sku.Effect == "grant_perk" && OwnsSku(sku.Id);
+        bool gated     = sku.Effect == "grant_item"
+                         && !string.IsNullOrEmpty(sku.RequiresBoss)
+                         && !BossGateOk(sku.RequiresBoss);
+        int  cap       = sku.WeeklyCap;                       // 0 = unlimited
+        int  used      = WeeklyUsed(sku.Id);
+        int  remaining = cap > 0 ? Mathf.Max(0, cap - used) : -1;
+        bool capReached = cap > 0 && remaining <= 0;
+
+        GUILayout.BeginHorizontal();
+        // Optional preview thumbnail at the left of the row. Space is reserved as
+        // soon as the SKU declares an image so the row doesn't jump when the
+        // async load finishes; the texture is drawn (scaled to fit) once ready.
+        if (!string.IsNullOrEmpty(sku.PreviewImage))
+        {
+            var thumbRect = GUILayoutUtility.GetRect(72, 72, GUILayout.Width(72), GUILayout.Height(72));
+            var thumb = ImageCache.Get(sku.PreviewImage);
+            if (thumb != null)
+            {
+                GUI.DrawTexture(thumbRect, thumb, ScaleMode.ScaleToFit);
+                // Invisible hit-target over the image — click to view it full-size.
+                if (GUI.Button(thumbRect, new GUIContent("", "Click to enlarge"), GUIStyle.none))
+                    OpenZoom(sku);
+            }
+            GUILayout.Space(8);
+        }
+        // Small tag (sku.Description, e.g. "Best value") rides after the name.
+        string tag = string.IsNullOrEmpty(sku.Description) ? "" : $"   ({sku.Description})";
+        GUILayout.Label($"{sku.Name}  -  {sku.Price}c{tag}", _label, GUILayout.ExpandWidth(true));
+
+        // Right-hand action column: exactly one of owned / locked / capped /
+        // buy / offline. One-time perks lose the Buy button once owned.
+        if (ownedPerk)
+            GUILayout.Label("Already Purchased", _owned, GUILayout.Width(160));
+        else if (gated)
+            DisabledButton("Locked", 110);
+        else if (capReached)
+            DisabledButton("Limit reached", 130);
+        else if (_online)
+        {
+            // Buy only *stages* the purchase — the confirm modal fires the RPC.
+            if (GUILayout.Button("Buy", _btn, GUILayout.Width(90), GUILayout.Height(30)))
+                _confirmSku = sku;
+        }
+        else
+            DisabledButton("Buy", 90);
+        GUILayout.EndHorizontal();
+
+        // Dim auto-derived contents (grant_item only) — what's actually in the
+        // bundle, so dropping the per-item prose doesn't hide what you're buying.
+        if (sku.Effect == "grant_item")
+        {
+            var contents = BundleContents(sku.Item);
+            if (!string.IsNullOrEmpty(contents))
+                GUILayout.Label("    " + contents, _dim);
+        }
+        else if (sku.Effect == "armor_vfx")
+        {
+            GUILayout.Label($"    Hovers at your shoulder; renames your helmet \"... {ArmorVfxSuffix(sku)}\"", _dim);
+        }
+
+        // State note under the row (gate / weekly cap).
+        if (gated)
+            GUILayout.Label($"    Unlocks after {FriendlyBoss(sku.RequiresBoss)}", _sub);
+        else if (sku.Effect == "grant_item" && cap > 0)
+        {
+            if (capReached)
+                GUILayout.Label($"    Weekly limit reached - resets in {_weekResetsIn}", _sub);
+            else
+                GUILayout.Label($"    {remaining} of {cap} left this week", _sub);
+        }
+        GUILayout.Space(8);
+    }
+
+    // Turns a grant_item spec ("LoxPie:5,Bread:5") into a readable, ASCII-only
+    // contents line ("Lox Pie x5, Bread x5"). CamelCase prefab ids are split on
+    // the lower->upper boundary; qty defaults to 1 when omitted.
+    private static readonly Regex CamelBoundary = new Regex(@"(?<=[a-z0-9])(?=[A-Z])", RegexOptions.Compiled);
+    private static string BundleContents(string itemSpec)
+    {
+        if (string.IsNullOrEmpty(itemSpec)) return "";
+        var parts = new List<string>();
+        foreach (var raw in itemSpec.Split(','))
+        {
+            var piece = raw.Trim();
+            if (piece.Length == 0) continue;
+
+            string prefab = piece;
+            string qty = "1";
+            int colon = piece.LastIndexOf(':');
+            if (colon > 0)
+            {
+                prefab = piece.Substring(0, colon).Trim();
+                var q = piece.Substring(colon + 1).Trim();
+                if (q.Length > 0) qty = q;
+            }
+
+            string pretty = CamelBoundary.Replace(prefab, " ");
+            parts.Add(qty == "1" ? pretty : $"{pretty} x{qty}");
+        }
+        return string.Join(", ", parts.ToArray());
     }
 
     // ─── Gift tab ─────────────────────────────────────────────────────────
@@ -691,6 +1053,172 @@ public class DonationPanel : MonoBehaviour
         _log.Add(msg);
         if (_log.Count > LogCap) _log.RemoveAt(0);
     }
+
+    // ─── Image zoom overlay ─────────────────────────────────────────────────
+
+    private void OpenZoom(Catalog.Sku sku)
+    {
+        _zoomImage   = sku.PreviewImage;
+        _zoomCaption = sku.Name;
+    }
+
+    // Full-size preview over a dimmed screen. The image is fitted into a box
+    // that never exceeds the window (or the texture's own size, so a small
+    // source isn't blown up into a blurry mess), and closes on click anywhere,
+    // the Close button, or Escape.
+    private void DrawZoomModal()
+    {
+        var tex = ImageCache.Get(_zoomImage);
+        if (tex == null) { _zoomImage = null; return; }
+
+        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _line);
+
+        if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)
+        { _zoomImage = null; Event.current.Use(); return; }
+
+        // Fit the texture inside the available area, preserving aspect and never
+        // upscaling past 1:1.
+        float maxW = Screen.width  * 0.8f;
+        float maxH = Screen.height * 0.8f - 70f;   // leave room for caption + button
+        float scale = Mathf.Min(maxW / tex.width, maxH / tex.height, 1f);
+        float imgW = tex.width * scale, imgH = tex.height * scale;
+
+        float panelW = imgW + 36f;
+        float panelH = imgH + 100f;
+        var r = new Rect((Screen.width - panelW) / 2f, (Screen.height - panelH) / 2f, panelW, panelH);
+
+        // Click outside the panel closes. Handled before the panel's own controls
+        // so a full-screen hit-target can't swallow the Close button.
+        if (Event.current.type == EventType.MouseDown && !r.Contains(Event.current.mousePosition))
+        { _zoomImage = null; Event.current.Use(); return; }
+
+        GUI.Box(r, GUIContent.none, _bg);
+
+        GUI.DrawTexture(new Rect(r.x + 18f, r.y + 18f, imgW, imgH), tex, ScaleMode.ScaleToFit);
+
+        if (!string.IsNullOrEmpty(_zoomCaption))
+            GUI.Label(new Rect(r.x + 18f, r.y + imgH + 22f, imgW, 24f), _zoomCaption, _rateSub);
+
+        if (GUI.Button(new Rect(r.x + panelW / 2f - 60f, r.y + imgH + 50f, 120f, 32f), "Close", _btn))
+            _zoomImage = null;
+    }
+
+    // ─── Purchase confirmation modal ────────────────────────────────────────
+
+    private void DrawConfirmModal()
+    {
+        var sku = _confirmSku;
+        if (sku == null) return;
+
+        // Dim backdrop over the whole screen.
+        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _line);
+
+        bool isCharge = sku.Effect == "add_charges";
+        bool isVfx    = sku.Effect == "armor_vfx";
+
+        // armor_vfx: does the equipped helmet already carry a familiar? Then
+        // this purchase overwrites it — warn before taking the coins.
+        string overwriteWarn = null;
+        if (isVfx)
+        {
+            var curAura = ArmorVfx.EquippedAura(Player.m_localPlayer, "head");
+            if (curAura != null && ArmorVfx.Registry.TryGetValue(curAura, out var curDef))
+                overwriteWarn = curAura == sku.Perk
+                    ? $"Your equipped helmet already has the {curDef.Display} familiar bound to it."
+                    : $"Warning: your equipped helmet already has the {curDef.Display} familiar bound to it. Buying this will overwrite it with {ArmorVfxDisplay(sku)}.";
+        }
+
+        // Reserve room for the preview thumbnail (if any) so the modal grows to
+        // fit it rather than clipping the buttons.
+        int previewH = string.IsNullOrEmpty(sku.PreviewImage) ? 0 : 230;
+
+        int w = Mathf.Min(isVfx ? 480 : 460, Screen.width - 60);
+        int baseH = isCharge ? 300 : (isVfx ? (overwriteWarn != null ? 400 : 340) : 240);
+        int h = Mathf.Min(baseH + previewH, Screen.height - 60);
+        var r = new Rect((Screen.width - w) / 2f, (Screen.height - h) / 2f, w, h);
+        GUI.Box(r, GUIContent.none, _bg);
+
+        GUILayout.BeginArea(new Rect(r.x + 18, r.y + 18, r.width - 36, r.height - 36));
+
+        GUILayout.Label("Confirm Purchase", _hdr);
+        DrawHr();
+        GUILayout.Space(8);
+
+        // Preview (centered) when the SKU has one — click it to view full-size.
+        if (!string.IsNullOrEmpty(sku.PreviewImage))
+        {
+            var pr = GUILayoutUtility.GetRect(190, 190, GUILayout.Height(190), GUILayout.ExpandWidth(true));
+            var tex = ImageCache.Get(sku.PreviewImage);
+            if (tex != null)
+            {
+                GUI.DrawTexture(pr, tex, ScaleMode.ScaleToFit);
+                if (GUI.Button(pr, new GUIContent("", "Click to enlarge"), GUIStyle.none))
+                    OpenZoom(sku);
+                GUILayout.Label("(click the image to enlarge)", _rateSub);
+            }
+            GUILayout.Space(6);
+        }
+
+        GUILayout.Label($"Buy \"{sku.Name}\" for {sku.Price} Valcoins?", _label);
+        GUILayout.Space(4);
+        GUILayout.Label($"Your balance: {_balance} Valcoins", _sub);
+
+        // Soulkeeper (and any charge SKU): the pool is credited server-side and
+        // reflected on the next state poll, so set the expectation up front.
+        if (isCharge)
+        {
+            GUILayout.Space(8);
+            GUILayout.Label("Note: charges are processed on the server - it may take "
+                            + "a few seconds for your new charge count to appear.", _sub);
+        }
+
+        // armor_vfx: familiars bind to the equipped helmet.
+        if (isVfx)
+        {
+            GUILayout.Space(8);
+            GUILayout.Label("The familiar is bound to your equipped helmet and hovers at your shoulder.", _label);
+            string stats = ArmorVfxStats(sku);
+            GUILayout.Label("You must have a helmet equipped. It is renamed "
+                            + $"\"... {ArmorVfxSuffix(sku)}\"."
+                            + (stats != "" ? $" Grants feather fall and {stats}." : ""), _sub);
+            if (overwriteWarn != null)
+            {
+                GUILayout.Space(6);
+                var pc = GUI.color;
+                GUI.color = new Color(1f, 0.6f, 0.4f);
+                GUILayout.Label(overwriteWarn, _label);
+                GUI.color = pc;
+            }
+        }
+
+        GUILayout.FlexibleSpace();
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("Yes, buy", _btnPrimary, GUILayout.Height(38)))
+        {
+            RpcLayer.SendAction("buy:" + sku.Id);
+            // Arm the result modal: the next server reply reports the outcome.
+            _pendingBuySku = sku.Id;
+            _pendingBuyDeadline = Time.realtimeSinceStartup + 12f;
+            _resultExtra = null;
+            _confirmSku = null;
+        }
+        GUILayout.Space(10);
+        if (GUILayout.Button("Cancel", _btn, GUILayout.Height(38)))
+            _confirmSku = null;
+        GUILayout.EndHorizontal();
+
+        GUILayout.EndArea();
+    }
+
+    // The armor-effect name suffix for a SKU (from the aura registry via perk).
+    private static string ArmorVfxSuffix(Catalog.Sku sku)
+        => ArmorVfx.Registry.TryGetValue(sku.Perk ?? "", out var a) ? a.Suffix : "of ...";
+
+    private static string ArmorVfxDisplay(Catalog.Sku sku)
+        => ArmorVfx.Registry.TryGetValue(sku.Perk ?? "", out var a) ? a.Display : sku.Name;
+
+    private static string ArmorVfxStats(Catalog.Sku sku)
+        => ArmorVfx.Registry.TryGetValue(sku.Perk ?? "", out var a) ? ArmorVfx.StatsText(a) : "";
 
     // ─── Terms of Use modal ─────────────────────────────────────────────────
 

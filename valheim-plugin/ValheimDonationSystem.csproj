@@ -22,6 +22,9 @@
     <Reference Include="UnityEngine.UnityWebRequestModule">
       <HintPath>libs\UnityEngine.UnityWebRequestModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestTextureModule">
+      <HintPath>libs\UnityEngine.UnityWebRequestTextureModule.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine.IMGUIModule">
       <HintPath>libs\UnityEngine.IMGUIModule.dll</HintPath>
     </Reference>
@@ -30,6 +33,12 @@
     </Reference>
     <Reference Include="UnityEngine.TextRenderingModule">
       <HintPath>libs\UnityEngine.TextRenderingModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.ParticleSystemModule">
+      <HintPath>libs\UnityEngine.ParticleSystemModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>libs\UnityEngine.AnimationModule.dll</HintPath>
     </Reference>
     <Reference Include="assembly_valheim">
       <HintPath>libs\assembly_valheim.dll</HintPath>

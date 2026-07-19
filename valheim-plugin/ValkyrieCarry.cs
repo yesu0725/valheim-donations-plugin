@@ -116,7 +116,10 @@ public static class ValkyrieCarry
         if (VisualAvailable)
             yield return CarryFlight(player, gravePos);
         else
+        {
             FallbackTeleport(player, gravePos);
+            yield return RepelPulses(gravePos);
+        }
     }
 
     // Player gone or died again during the countdown (a new death re-arms with
@@ -222,10 +225,61 @@ public static class ValkyrieCarry
             FallbackTeleport(player, gravePos);
         }
 
-        // Give the landing zone a moment to settle before items are grabbable
-        // again (the post-flight AutoPickup NRE from the first test).
-        yield return new WaitForSeconds(3f);
+        // Drive hostile creatures away from the tombstone so the player isn't
+        // mobbed the moment control returns. The pulses double as the settle
+        // delay before auto-pickup is restored (the post-flight AutoPickup NRE
+        // from the first test).
+        yield return RepelPulses(gravePos);
         SetAutoPickup(prevAutoPickup);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tomb-side repel: scatter creatures camping the tombstone
+    // ─────────────────────────────────────────────────────────────────────
+    // Three shockwave pulses over ~4.5s. Each pulse hits every hostile
+    // creature near the grave with a ZERO-damage, NO-attacker HitData that
+    // carries only stagger + a strong radial push. Verified against
+    // RPC_Damage: no attacker + no damage means no aggro/aggravation — the
+    // owner just applies the pushback — and Damage() routes to the creature's
+    // owner, so it works no matter which peer simulates the creature.
+    private const float RepelRadius = 12f;
+    private const float RepelForce  = 90f;
+
+    private static IEnumerator RepelPulses(Vector3 gravePos)
+    {
+        for (int pulse = 0; pulse < 3; pulse++)
+        {
+            RepelPulse(gravePos, RepelRadius, RepelForce);
+            yield return new WaitForSeconds(1.5f);
+        }
+    }
+
+    private static void RepelPulse(Vector3 center, float radius, float force)
+    {
+        try
+        {
+            int pushed = 0;
+            foreach (var c in Character.GetAllCharacters())
+            {
+                if (c == null || c.IsPlayer() || c.IsTamed() || c.IsBoss() || c.IsDead()) continue;
+                if (Vector3.Distance(c.transform.position, center) > radius) continue;
+
+                var dir = c.transform.position - center;
+                dir.y = 0f;
+                if (dir.sqrMagnitude < 0.01f) dir = UnityEngine.Random.insideUnitSphere;
+
+                var hit = new HitData();
+                hit.m_dir = dir.normalized;
+                hit.m_pushForce = force;
+                hit.m_staggerMultiplier = 100f;   // >= 100 staggers on the owner
+                hit.m_point = c.transform.position;
+                c.Damage(hit);
+                pushed++;
+            }
+            if (pushed > 0)
+                Debug.Log($"[Valcoin][Carry] Repel pulse pushed {pushed} creature(s) from the tomb.");
+        }
+        catch (Exception ex) { Debug.LogWarning($"[Valcoin][Carry] Repel failed: {ex.Message}"); }
     }
 
     // Sets Player.m_enableAutoPickup (private static, user-toggleable in vanilla

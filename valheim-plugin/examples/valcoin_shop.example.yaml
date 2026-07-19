@@ -1,61 +1,155 @@
 # =====================================================================
-# Valcoin shop catalog — PROPOSED (ecosystem-aware, balance-guarded)
+# Valcoin shop catalog — reference (ecosystem-aware, balance-guarded)
 # =====================================================================
-# Drop-in replacement for BepInEx/config/valcoin_shop.yaml.
-#
-# As of plugin v5.2.0 this IS the shipped default catalog (see Catalog.cs).
-# All fields/effects below are fully understood by the plugin and backend:
+# Drop-in replacement for BepInEx/config/valcoin_shop.yaml. This IS the shipped
+# default catalog (see Catalog.cs). All fields/effects below are fully
+# understood by the plugin and backend:
 #
 # Fields (Catalog.Sku + parser cases in Catalog.cs):
+#   name:          label shown in the Shop tab
+#   description:   (optional) short tag after the name, e.g. "Best value"
+#   price:         Valcoin cost
+#   effect:        grant_item | add_charges | grant_perk
 #   item:          comma list of "prefab" or "prefab:qty" (grant_item effect)
 #   weekly_cap:    max purchases of this SKU per player per week (0 = unlimited)
 #   requires_boss: global boss key that must be set before this SKU is buyable
 #                  (defeated_bonemass | defeated_goblinking | defeated_queen |
 #                   defeated_fader | defeated_gdking | defeated_dragon | ...)
+#   perk:          (add_charges) the charge-pool key; (grant_perk) the perk id
+#   charges:       (add_charges) how many charges each purchase grants
+#   category:      Shop grouping label — SKUs sharing it render under one header
+#   category_desc: one-line blurb for the category, set ONCE on the first SKU of
+#                  the group. The Shop tab auto-derives a "contents" line for
+#                  grant_item SKUs from `item`, so per-item prose isn't needed.
+#   preview_image: (optional) thumbnail shown next to the SKU in the Shop tab and
+#                  in the purchase-confirm dialog. Either an https URL, or a path
+#                  relative to BepInEx/config (e.g. shop_images/foo.png). Prefer a
+#                  URL on a dedicated server so every client can load it — a
+#                  config-relative path only resolves where the file exists.
 #
-# Effect (ShopHandler.ApplyEffect + backend weekly counter in spend.py):
-#   grant_item     spawns the listed items into inventory (drop if full)
+# Effects:
+#   grant_item     spawns the listed item stacks at the buyer's feet
+#   add_charges    credits a backend-tracked consumable pool (e.g. Soulkeeper)
 #
 # grant_item pre-checks the boss gate + weekly cap BEFORE debiting coins,
 # but prefab validity is only checked at spawn time — a wrong prefab id
 # charges coins and skips that item. Verify any id you add against your
-# Valheim version.
+# Valheim version. Category + item order follow first appearance in this file.
 # =====================================================================
 
 shop:
 
-  # ---------- Convenience: Soulkeeper Charm (death insurance) ----------
-  # add_charges credits a backend-tracked 'soulkeeper' charge pool. On death you
-  # keep your skills (no drain). PvE-safe: it only softens the death tax, never
-  # helps win a fight. Priced with a decoy so x10 reads as the obvious value.
+  # ---------- Soulkeeper Charms (death insurance) ----------
+  # Charges of one shared 'soulkeeper' pool. On death you keep your skills (no
+  # skill drain) and a Valkyrie carries you back to your tombstone. Never helps
+  # you win a fight - it only softens the death tax. Priced with a deliberate
+  # decoy: the x5 exists to make x10 the obvious buy.
   soulkeeper_1:
+    category: "Soulkeeper Charms"
+    category_desc: "Death insurance - keep your skills on death (no drain) and a Valkyrie carries you back to your tombstone, scattering nearby creatures on arrival. Limited to 10 charges per week. PvE-safe; never helps you win a fight."
     name: "Soulkeeper Charm (x1)"
-    description: "On death, keep your skills - no skill drain. Adds 1 charge."
     price: 300
     effect: add_charges
     perk: soulkeeper
     charges: 1
+    weekly_charge_cap: 10
+    # preview_image: "https://your-app.fly.dev/static/shop/soulkeeper.png"
+    # (or a config-relative path, e.g. preview_image: "shop_images/soulkeeper.png")
 
   soulkeeper_5:
+    category: "Soulkeeper Charms"
     name: "Soulkeeper Charm (x5)"
-    description: "On death, keep your skills - no skill drain. Adds 5 charges."
     price: 1200
     effect: add_charges
     perk: soulkeeper
     charges: 5
+    weekly_charge_cap: 10
 
   soulkeeper_10:
+    category: "Soulkeeper Charms"
     name: "Soulkeeper Charm (x10)"
-    description: "On death, keep your skills - no skill drain. Adds 10 charges. Best value."
+    description: "Best value"
     price: 1300
     effect: add_charges
     perk: soulkeeper
     charges: 10
+    weekly_charge_cap: 10
 
-  # ---------- Weekly-limited food (progression-gated) ----------
+  # ---------- Familiars (mini flying-creature companions) ----------
+  # armor_vfx binds a miniature flying creature to your equipped helmet - it
+  # hovers at your right shoulder, head height. Purely cosmetic - no stats.
+  # `perk` selects the familiar; the visuals live in the plugin's ArmorVfx
+  # registry. Priced by progression tier.
+  familiar_bat:
+    category: "Familiars"
+    category_desc: "A miniature flying creature hovers at your shoulder, bound to your equipped helmet (renames it to match). Grants feather fall and a small attack bonus. Other players see it too."
+    name: "Bat Familiar"
+    description: "+2 slash"
+    price: 400
+    effect: armor_vfx
+    perk: bat
+
+  familiar_ghost:
+    category: "Familiars"
+    name: "Ghost Familiar"
+    description: "+2 slash"
+    price: 500
+    effect: armor_vfx
+    perk: ghostlight
+
+  familiar_deathsquito:
+    category: "Familiars"
+    name: "Deathsquito Familiar"
+    description: "+2 pierce"
+    price: 600
+    effect: armor_vfx
+    perk: deathsquito
+
+  familiar_hatchling:
+    category: "Familiars"
+    name: "Drake Hatchling Familiar"
+    description: "+2 frost"
+    price: 700
+    effect: armor_vfx
+    perk: hatchling
+
+  familiar_wraith:
+    category: "Familiars"
+    name: "Wraith Familiar"
+    description: "+2 slash"
+    price: 800
+    effect: armor_vfx
+    perk: wraith
+
+  familiar_volture:
+    category: "Familiars"
+    name: "Volture Familiar"
+    description: "+3 pierce"
+    price: 900
+    effect: armor_vfx
+    perk: volture
+
+  familiar_gjall:
+    category: "Familiars"
+    name: "Gjall Familiar"
+    description: "+2 blunt, +1 fire"
+    price: 1100
+    effect: armor_vfx
+    perk: gjall
+
+  familiar_valkyrie:
+    category: "Familiars"
+    name: "Fallen Valkyrie Familiar"
+    description: "+2 spirit"
+    price: 1300
+    effect: armor_vfx
+    perk: fallen_valkyrie
+
+  # ---------- Feasts (progression-gated food) ----------
   food_t1:
-    name: "Swamp Feast (bundle)"
-    description: "Sausages + Blood Pudding + Serpent Stew, x5 each. Requires Bonemass."
+    category: "Feasts"
+    category_desc: "Top-tier cooked meals, 5 of each dish. Weekly-limited, and each unlocks once you've beaten its biome boss."
+    name: "Swamp Feast"
     price: 120
     effect: grant_item
     item: "Sausages:5,BloodPudding:5,SerpentStew:5"
@@ -63,8 +157,8 @@ shop:
     requires_boss: defeated_bonemass
 
   food_t2:
-    name: "Plains Feast (bundle)"
-    description: "Lox Meat Pie + Bread + Fish Wraps, x5 each. Requires Yagluth."
+    category: "Feasts"
+    name: "Plains Feast"
     price: 180
     effect: grant_item
     item: "LoxPie:5,Bread:5,FishWraps:5"
@@ -72,8 +166,8 @@ shop:
     requires_boss: defeated_goblinking
 
   food_t3:
-    name: "Mistlands Feast (bundle)"
-    description: "Misthare Supreme + Mushroom Omelette + Yggdrasil Porridge, x5 each. Requires the Queen."
+    category: "Feasts"
+    name: "Mistlands Feast"
     price: 260
     effect: grant_item
     item: "MisthareSupreme:5,MushroomOmelette:5,YggdrasilPorridge:5"
@@ -81,26 +175,27 @@ shop:
     requires_boss: defeated_queen
 
   food_t4:
-    name: "Ashlands Feast (bundle)"
-    description: "Top Ashlands dishes, x5 each. Requires the Ashlands boss."
+    category: "Feasts"
+    name: "Ashlands Feast"
     price: 350
     effect: grant_item
     item: "MashedMeat:5,PiquantPie:5,MarinatedGreens:5"   # verified Ashlands prefab ids
     weekly_cap: 2
     requires_boss: defeated_fader
 
-  # ---------- Weekly-limited meads ----------
+  # ---------- Meads ----------
   meads_utility:
-    name: "Utility Meads (bundle)"
-    description: "Tasty + Frost Resistance + Poison Resistance mead, x5 each."
+    category: "Meads"
+    category_desc: "Mead bundles, 5 of each. Weekly-limited; some unlock after their boss."
+    name: "Utility Meads"
     price: 100
     effect: grant_item
     item: "MeadTasty:5,MeadFrostResist:5,MeadPoisonResist:5"
     weekly_cap: 3
 
   meads_vitality:
-    name: "Vitality Meads (bundle)"
-    description: "Medium Healing + Medium Stamina mead, x5 each. Requires Bonemass."
+    category: "Meads"
+    name: "Vitality Meads"
     price: 160
     effect: grant_item
     item: "MeadHealthMedium:5,MeadStaminaMedium:5"
@@ -108,18 +203,19 @@ shop:
     requires_boss: defeated_bonemass
 
   meads_eitr:
-    name: "Eitr Meads (bundle)"
-    description: "Minor Eitr mead, x5. Requires the Queen."
+    category: "Meads"
+    name: "Eitr Meads"
     price: 160
     effect: grant_item
     item: "MeadEitrMinor:5"
     weekly_cap: 2
     requires_boss: defeated_queen
 
-  # ---------- Weekly-limited materials ----------
+  # ---------- Supplies (materials & seeds) ----------
   farm_bundle:
+    category: "Supplies"
+    category_desc: "Grind-heavy materials and seeds in bulk. Weekly-limited."
     name: "Farmer's Crate"
-    description: "Barley + Flax + Onion/Carrot/Turnip seeds, x20 each. Requires Yagluth (barley/flax)."
     price: 120
     effect: grant_item
     item: "Barley:20,Flax:20,OnionSeeds:20,CarrotSeeds:20,TurnipSeeds:20"
@@ -127,8 +223,8 @@ shop:
     requires_boss: defeated_goblinking
 
   forage_bundle:
+    category: "Supplies"
     name: "Forager's Crate"
-    description: "Coal x50, Resin x50, Feathers x50, Thistle/Dandelion/Honey x20. No gate."
     price: 100
     effect: grant_item
     item: "Coal:50,Resin:50,Feathers:50,Thistle:20,Dandelion:20,Honey:20"

@@ -42,7 +42,7 @@ public static class UiActionRouter
         switch (key)
         {
             case "donate":       DonateFlow.Run(steam64, senderName, Reply); break;
-            case "buy":          ShopHandler.Buy(steam64, rest.Trim().ToLowerInvariant(), Reply); break;
+            case "buy":          DoBuy(steam64, rest, Reply); break;
             case "gift":         DoGift(steam64, senderName, rest, Reply); break;
             case "topdonors":    TopDonorsFetcher.Fetch(reply => Reply(reply)); break;
             case "whoami":       Reply("__ADMIN__:" + IsAdmin(steam64).ToString().ToLowerInvariant()); break;
@@ -50,6 +50,16 @@ public static class UiActionRouter
             case "admin_remove": DoAdminAdjust(steam64, rest, Reply, give: false); break;
             default:             Reply($"⚠️ Unknown UI action: {key}"); break;
         }
+    }
+
+    // "buy:<sku>" or "buy:<sku>:<arg>" (arg = armor slot for armor_vfx SKUs).
+    private static void DoBuy(string steam64, string rest, Action<string> reply)
+    {
+        var parts = rest.Split(new[] { ':' }, 2);
+        string sku = parts[0].Trim().ToLowerInvariant();
+        string arg = parts.Length > 1 ? parts[1].Trim().ToLowerInvariant() : null;
+        // reply is an Action<string>; ShopHandler.Buy wants its TellFn delegate.
+        ShopHandler.Buy(steam64, sku, m => reply(m), extra: arg);
     }
 
     private static bool IsAdmin(string steam64) =>

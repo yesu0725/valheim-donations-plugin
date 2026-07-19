@@ -10,7 +10,7 @@ using HarmonyLib;
 // inherited BaseUnityPlugin.Config (a BepInEx ConfigFile) property.
 using PluginConfig = Config;
 
-[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.7.0")]
+[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.16.0")]
 public class Plugin : BaseUnityPlugin
 {
     public static HashSet<string> AdminSteamIDs = new HashSet<string>();
@@ -86,6 +86,12 @@ public class Plugin : BaseUnityPlugin
         var sk = new GameObject("ValcoinSoulkeeperPoller");
         sk.AddComponent<SoulkeeperPoller>();
         DontDestroyOnLoad(sk);
+
+        // Renders armor-effect auras (self + other players) from ZDO state and
+        // mirrors the local player's equipped auras onto their own ZDO.
+        var av = new GameObject("ValcoinArmorVfxManager");
+        av.AddComponent<ArmorVfxManager>();
+        DontDestroyOnLoad(av);
     }
 
     // --- Admin YAML --------------------------------------------------------

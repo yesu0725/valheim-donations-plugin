@@ -9,27 +9,84 @@ files before trusting it if it's been a while.
   Shop now ships a **Soulkeeper Charm** consumable (backend charge ledger +
   in-game skill-save + Valkyrie tombstone carry); cosmetic badge/title/flair
   perks were dropped.
-- **Backend version:** `0.5.0` (see [main.py](../backend/app/main.py)).
-  **Deployed and reachable at `https://valheim-donations.fly.dev`.** The live
-  build includes the **charge ledger** (`charges` table, `grant_charges` on
-  `/api/spend`, `/api/charges/consume`, and `charges` + `owned_skus` +
-  `weekly_usage` on `/api/state`) — deployed 2026-07-12. See
-  [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.7.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
-  Deployed to both client r2modman profiles (`Hearthbound Valheim` +
-  `Hearthbound Valheim - Test`) and the dedicated server via `deploy.ps1`.
-  **Restart the server + client to load 5.7.0.**
-- **Backend tests:** 62 passing (`cd backend; pytest`). `pytest` is not in the
-  base Python env — install `requirements-dev.txt` in a venv first (see
-  [DEVELOPMENT.md](DEVELOPMENT.md)).
-- **Last code activity:** 2026-07-12 — Soulkeeper Charm Phase 1 (charge ledger
-  + warded death) and Phase 2 (Valkyrie carry), shop UI overhaul (owned /
-  weekly-cap / charge states, input-blocking, larger fonts), portal single-
-  column provider redesign, removal of the cosmetic chat-decoration subsystem.
+- **Backend version:** `0.6.0` (see [main.py](../backend/app/main.py)).
+  **Deployed and reachable at `https://valheim-donations.fly.dev`** — redeployed
+  2026-07-19 adding **`coins_per_usd` to `/api/state`** (from
+  `settings.coins_per_unit["USD"]`, currently **50**) so the in-game panel can
+  show an authoritative exchange rate instead of hard-coding one. Verified live:
+  `/api/state/<id>` returns `coins_per_usd: 50.0`. The 2026-07-13 deploy added
+  the **weekly charge cap** (`charge_grants` history table, `weekly_charge_cap`
+  on `/api/spend`, enforced across all SKUs of a charge kind) on top of the
+  **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
+  `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
+  `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
+- **Plugin version:** `5.16.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+  Deployed to the `Hearthbound Valheim - Test` r2modman profile and the
+  dedicated server via `deploy.ps1`. NOTE: the `Hearthbound Valheim` (non-test)
+  profile **no longer exists on this machine** and is now silently skipped by
+  `deploy.ps1` — recreate it or drop it from the script's list.
+  **Restart the server + client to load 5.16.0.**
+  **5.16.0** adds **shop preview images** (optional `preview_image` per SKU —
+  `https` URL or a path relative to `BepInEx/config`; loaded async and cached by
+  [ImageCache.cs](../valheim-plugin/ImageCache.cs)), a **click-to-enlarge zoom
+  overlay** (fits to 80% of the window, never upscales past 1:1, closes on
+  Close / click-outside / Escape, and outranks the other modals so it can be
+  opened from the buy dialog), and the **`$1 USD = N Valcoins` callout** on the
+  Donate tab fed by the backend's new `coins_per_usd`. The live Familiars
+  catalog sets `preview_image` for all 8 SKUs. (5.7.0 = Soulkeeper Charm
+  Phases 1+2; 5.8.0 = grouped/categorized Shop tab; 5.9.0 = native Valheim-style
+  panel skin + Yes/Cancel purchase-confirm modal; 5.10.0 = `armor_vfx` auras;
+  5.11–5.12 iterated slot-bound auras; 5.13.0 pivoted the category to
+  **Familiars** — 8 mini flying-creature companions (Bat / Ghost / Deathsquito /
+  Drake / Wraith / Volture / Gjall / Fallen Valkyrie) hovering at the right
+  shoulder, bound to the equipped helmet, tier-priced 400–1300c; whole-creature
+  visuals cloned inside an inactive holder, stripped of AI/network/physics.
+  **5.14.0** fixed the familiar clones (dependency-ordered strip so no more
+  "Can't remove Humanoid" log; `flying` animator bool so the Hatchling animates;
+  height/particle tuning; spawn/despawn poof) and added **feather fall** (shared
+  with the Feather Cape). **5.15.0** adds a **small flat attack bonus per
+  familiar** (`SE_FamiliarBond` on the game's `ModifyAttack`: +2/+3 of the
+  creature's damage type), an **overwrite warning** in the buy modal when the
+  helmet already has a familiar, **Gjall drips removed**, the **10-charge/week
+  Soulkeeper cap**, and a **tomb-area creature repel** on Valkyrie landing.
+  Server's `valcoin_shop.yaml` still has 20 SKUs — restart to reload. NOTE:
+  server DLL copies require the dedicated server to be STOPPED first.)
+- **Backend tests:** 65 passing (`cd backend; pytest`) — includes 3 new weekly
+  charge-cap tests. `pytest` is not in the base Python env — install
+  `requirements-dev.txt` in a venv first (see [DEVELOPMENT.md](DEVELOPMENT.md)).
+- **Last code activity:** 2026-07-19 — shop **preview images** + **click-to-
+  enlarge** overlay, **exchange-rate callout** on the Donate tab, backend
+  `coins_per_usd` on `/api/state`; plugin bumped to 5.16.0 and backend to 0.6.0,
+  both deployed. Added a `UnityEngine.UnityWebRequestTextureModule` reference to
+  the csproj (copied into `libs/` from the Steam install) — required for
+  `UnityWebRequestTexture`/`DownloadHandlerTexture`.
 - **Deployment target:** Fly.io, region `sin` (Singapore), 256 MB shared VM,
   1 GB persistent volume for SQLite. **Live** — see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Known discrepancies
+
+### Preview images use config-relative paths — remote clients see blanks (2026-07-19)
+
+The live `valcoin_shop.yaml` (identical on the dedicated server and the test
+profile) sets `preview_image` for all 8 Familiars as **config-relative paths**
+(`shop_images/Bat.png`, …), and the 8 PNGs exist in `BepInEx/config/shop_images/`
+in **both** those locations. But the catalog RPC syncs the *string*, not the
+file: a connecting player resolves `shop_images/Bat.png` against **their own**
+`BepInEx/config` and — having no such folder — gets a blank space where the
+thumbnail should be. Only this machine renders them.
+
+**Fix:** host the 8 PNGs at `https` URLs and point `preview_image` at those.
+Worth downscaling first — the sources are 300–780 KB each (~3.5 MB total) for
+images that render at 72px in the shop row, so every client would pay that
+download for nothing.
+
+### `deploy.ps1` silently skips a profile that no longer exists (2026-07-19)
+
+`deploy.ps1` lists three destinations; the `Hearthbound Valheim` (non-test)
+r2modman profile is **gone from this machine**, so every deploy prints
+`SKIP (missing folder)` and copies to only two. That's by design (the script
+tolerates missing folders), but it means "deployed" now covers the test profile
+and the dedicated server only. Recreate the profile or prune the list.
 
 ### Soulkeeper Charm added; cosmetic perks + chat decoration removed (2026-07-12)
 
@@ -56,8 +113,22 @@ Also this pass: shop UI now renders owned / weekly-cap / charge states from
 `/api/state` (the client was previously blind to server-side ownership), all
 game input is blocked while the panel is open, fonts enlarged, and the donor
 portal is a single-column provider list (Ko-fi → PayMongo → Patreon → PayPal
-with logos). Catalog is **12 SKUs** (3 Soulkeeper tiers + 9 `grant_item`
+with logos). Catalog is **20 SKUs** (3 Soulkeeper tiers + 8 Familiars + 9 `grant_item`
 bundles). See [SHOP.md](SHOP.md).
+
+> **Follow-up (2026-07-13, plugin 5.14–5.15, backend redeployed):** Familiars
+> gained light utility — each grants **feather fall** (the Feather Cape's own
+> `SlowFall` effect, non-stacking) and a **small flat attack bonus**
+> (`SE_FamiliarBond`, +2/+3 of the creature's damage type via the game's
+> `ModifyAttack`; 1–4 % of endgame weapon damage — inside the balance rule). The
+> buy modal now **warns before overwriting** a familiar already on the equipped
+> helmet. The Soulkeeper pool is capped at **10 charges/player/week** (shared
+> across the ×1/×5/×10 tiers), enforced backend-side from a new `charge_grants`
+> table via `weekly_charge_cap`. On Valkyrie landing, three shockwave pulses
+> **repel hostile creatures** from the tombstone (zero-damage, no-attacker
+> pushback — no aggro). Familiar-clone fixes: dependency-ordered component strip
+> (no more "Can't remove Humanoid"), `flying` animator bool (Hatchling animates),
+> Gjall tar drips removed, particle sizes tamed, spawn/despawn poof.
 
 ### F4 Codex + F8 panel merged into one panel (2026-07-09)
 

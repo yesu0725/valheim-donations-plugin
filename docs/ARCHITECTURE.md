@@ -52,7 +52,10 @@ their tombstone on respawn; see [SHOP.md](SHOP.md)). Balance-guarded ecosystem
 hooks for the sibling mods (BiomeLords, Lost Scrolls II, ServerGuide,
 ServerGuard) are documented under [ecosystem/](ecosystem/donation-hooks.md).
 The `grant_item` weekly cap and the `add_charges` charge pool are both enforced
-on `/api/spend` since the backend owns the ledger.
+on `/api/spend` since the backend owns the ledger. `add_charges` SKUs can also
+carry an optional `weekly_charge_cap`, shared across every SKU that credits the
+same `charge_kind` — e.g. the Soulkeeper Charm's x1/x5/x10 tiers all draw down
+one 10-charge weekly budget, counted from `charge_grants`.
 
 ## Endpoints (quick reference)
 
@@ -84,6 +87,7 @@ SQLite (WAL mode). Tables, from [backend/app/schema.sql](../backend/app/schema.s
 | `provider_links` | provider_user_id ↔ steam64 bindings (e.g. linked Patreon accounts) |
 | `spends` | Append-only purchase/transfer ledger, `idempotency_key` UNIQUE. Also drives `/api/state`'s `owned_skus` + `weekly_usage` |
 | `charges` | Per-`(steam64, kind)` consumable charge counts (e.g. `soulkeeper`), credited by `add_charges` spends, decremented by `/api/charges/consume` |
+| `charge_grants` | Append-only history of every charge credit (one row per `add_charges` spend) — the `weekly_charge_cap` is enforced by summing `count` here within the current week |
 
 ## Idempotency model
 

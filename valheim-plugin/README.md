@@ -39,6 +39,8 @@ shop:
     effect: add_charges           # grant_perk | add_charges | grant_item
     perk: soulkeeper              # charge kind (the pool key)
     charges: 10                   # charges credited per purchase
+    preview_image: "shop_images/soulkeeper.png"   # optional thumbnail (URL or
+                                  # a path relative to BepInEx/config)
 
   food_t2:                        # grant_item — weekly-limited consumable
     name: "Plains Feast (bundle)"
@@ -49,12 +51,21 @@ shop:
     requires_boss: defeated_goblinking     # global boss key gate (optional)
 ```
 
+`preview_image` works on any SKU regardless of effect. It accepts an `https` URL
+or a path relative to `BepInEx/config`, and renders as a 72px thumbnail in the
+shop row plus a 190px preview in the buy dialog — clicking either opens a
+full-size zoom overlay. Images are fetched once and cached (`ImageCache.cs`).
+Because the catalog RPC syncs the *string* and not the file, a config-relative
+path only resolves on machines that actually hold the image — **prefer URLs on a
+dedicated server**, or remote clients see blank thumbnails.
+
 **Effects** (the `effect:` field):
 
 | Effect        | What it does                                                              | Status |
 |---------------|--------------------------------------------------------------------------|--------|
 | `grant_item`  | Spawns weekly-capped, optionally boss-gated item stacks at the buyer's feet | built  |
-| `add_charges` | Credits a backend-tracked consumable charge pool (the shipped **Soulkeeper Charm** — on death skip the skill drain + Valkyrie tombstone carry) | built  |
+| `add_charges` | Credits a backend-tracked consumable charge pool (the shipped **Soulkeeper Charm** — on death skip the skill drain + Valkyrie tombstone carry + tomb-area creature repel). Capped at **10 charges/player/week** via `weekly_charge_cap` | built  |
+| `armor_vfx`   | Binds a mini flying-creature **Familiar** to the equipped helmet (hovers at the right shoulder) + matching name suffix; broadcast via ZDO so others see it. Also grants **feather fall** + a **small flat attack bonus** while equipped | built |
 | `grant_perk`  | Flips a passive `PerkManager` flag — generic mechanism, but no SKU ships one today | supported |
 
 > **Removed cosmetics:** `donor_badge` / `chat_title` / `companion_flair` /
@@ -63,9 +74,10 @@ shop:
 > `NetworkUserId`). Replaced by the Soulkeeper Charm. Still-unbuilt armor perks
 > are in [../docs/ROADMAP.md](../docs/ROADMAP.md).
 
-The live catalog is **12 SKUs** (3 Soulkeeper Charm tiers + 9 `grant_item`
-bundles). Add `grant_item` / `add_charges` SKUs by editing the YAML; new effect
-types require a code change in `ShopHandler.cs::ApplyEffect`. Full catalog +
+The live catalog is **20 SKUs** (3 Soulkeeper Charm tiers + 8 Familiars
++ 9 `grant_item` bundles). Add `grant_item` / `add_charges` / `armor_vfx` SKUs by
+editing the YAML; new effect types require a code change in
+`ShopHandler.cs::ApplyEffect`. Full catalog +
 rationale: [examples/valcoin_shop.example.yaml](examples/valcoin_shop.example.yaml),
 [../docs/SHOP.md](../docs/SHOP.md), and
 [../docs/ecosystem/donation-hooks.md](../docs/ecosystem/donation-hooks.md).

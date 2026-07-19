@@ -20,7 +20,7 @@ public static class ShopHandler
         public int    spent;
     }
 
-    public static void Buy(string steam64, string skuId, TellFn tell, Action onSuccess = null)
+    public static void Buy(string steam64, string skuId, TellFn tell, Action onSuccess = null, string extra = null)
     {
         if (string.IsNullOrEmpty(steam64)) { tell("Couldn't resolve your Steam ID."); return; }
         if (!Config.Ready)                 { tell("Shop is offline (backend not configured)."); return; }
@@ -35,6 +35,12 @@ public static class ShopHandler
         // For grant_perk SKUs, refuse re-purchase if they already own it.
         if (sku.Effect == "grant_perk" && PerkManager.Has(steam64, sku.Perk))
         { tell($"You already own \"{sku.Name}\"."); return; }
+
+        // armor_vfx: cosmetic aura applied on the buyer's client. Each aura is
+        // bound to one slot (registry), so no slot argument is needed; the
+        // visual/rename happen client-side via the __ARMORVFX__ signal.
+        if (sku.Effect == "armor_vfx" && ArmorVfx.SlotFor(sku.Perk) == null)
+        { tell($"\"{sku.Name}\" is misconfigured (unknown effect). Tell an admin."); return; }
 
         // grant_item pre-checks BEFORE any coins are debited, so we never charge
         // a player we then can't deliver to.
@@ -59,9 +65,13 @@ public static class ShopHandler
             // Backend enforces the weekly cap; 0 = unlimited (perk SKUs, etc.).
             weekly_cap = sku.Effect == "grant_item" ? sku.WeeklyCap : 0,
             // add_charges SKUs credit a backend-tracked charge pool in the same
-            // spend tx (null for other effects so validation ignores them).
+            // spend tx (null for other effects so validation ignores them). The
+            // weekly charge cap is shared across every SKU of the same kind —
+            // the backend sums charges granted this week, not purchase counts.
             grant_charges = sku.Effect == "add_charges" ? (int?)sku.Charges : null,
             charge_kind   = sku.Effect == "add_charges" ? sku.Perk : null,
+            weekly_charge_cap = sku.Effect == "add_charges" && sku.WeeklyChargeCap > 0
+                ? (int?)sku.WeeklyChargeCap : null,
         };
 
         SharedCoroutineRunner.Instance.StartCoroutine(BackendClient.Post<SpendResp>(
@@ -92,15 +102,25 @@ public static class ShopHandler
                 }
 
                 // Apply the effect locally.
-                ApplyEffect(steam64, sku, tell);
+                ApplyEffect(steam64, sku, tell, extra);
                 onSuccess?.Invoke();
             }));
     }
 
-    private static void ApplyEffect(string steam64, Catalog.Sku sku, TellFn tell)
+    private static void ApplyEffect(string steam64, Catalog.Sku sku, TellFn tell, string extra = null)
     {
         switch (sku.Effect)
         {
+            case "armor_vfx":
+                // The visual + rename happen on the buyer's client. Signal it
+                // with a control message the panel intercepts (__ARMORVFX__),
+                // plus a friendly confirmation line. Slot comes from the aura
+                // registry (each aura is bound to one armor slot).
+                string slot = ArmorVfx.SlotFor(sku.Perk);
+                tell("__ARMORVFX__:" + sku.Perk + ":" + slot);
+                tell($"Purchased \"{sku.Name}\" - applying to your {slot} armor...");
+                break;
+
             case "grant_perk":
                 PerkManager.Grant(steam64, sku.Perk);
                 tell($"Purchased \"{sku.Name}\" - perk \"{sku.Perk}\" unlocked!");
@@ -108,8 +128,10 @@ public static class ShopHandler
 
             case "add_charges":
                 // Charges are credited backend-side during /api/spend (see Buy);
-                // the client just refreshes state to see the new count.
-                tell($"Purchased \"{sku.Name}\" - +{sku.Charges} charge(s) added.");
+                // the client refreshes state to see the new count, so it can take
+                // a few seconds to appear — say so to set the expectation.
+                tell($"Purchased \"{sku.Name}\" - +{sku.Charges} charge(s). "
+                     + "It may take a few seconds for your charge count to update.");
                 break;
 
             case "grant_item":

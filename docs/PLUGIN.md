@@ -8,7 +8,7 @@ client-side to use the donation system at all.
 
 ## Layout
 
-- [Plugin.cs](../valheim-plugin/Plugin.cs) — BepInEx entry, admin YAML, Harmony patch (current version **5.7.0**)
+- [Plugin.cs](../valheim-plugin/Plugin.cs) — BepInEx entry, admin YAML, Harmony patch (current version **5.16.0**)
 - [GrantPoller.cs](../valheim-plugin/GrantPoller.cs) — polls `/api/grants/pending`
 - [CatalogSync.cs](../valheim-plugin/CatalogSync.cs) — broadcasts the shop catalog to remote clients over RPC
 - [CoinManager.cs](../valheim-plugin/CoinManager.cs) — balance cache + applied-grant dedupe
@@ -22,7 +22,20 @@ client-side to use the donation system at all.
 - [ValkyrieCarry.cs](../valheim-plugin/ValkyrieCarry.cs) — Soulkeeper Charm Phase 2: after a warded
   death, on respawn the intro Valkyrie carries the player from the spawn point to their tombstone
   (fade transition, ESC-menu + auto-pickup suppressed during flight, distance-scaled watchdog with a
-  plain-teleport fallback)
+  plain-teleport fallback). On landing (flight or fallback teleport), `RepelPulses` fires three
+  zero-damage/no-attacker shockwaves that stagger + push hostile creatures within 12m off the
+  tombstone, so the player isn't immediately mobbed
+- [ArmorVfx.cs](../valheim-plugin/ArmorVfx.cs) — **Familiars**: the `armor_vfx` effect binds a
+  miniature flying creature (Bat / Ghost / Deathsquito / Drake Hatchling / Wraith / Volture / Gjall /
+  Fallen Valkyrie) to the equipped helmet, hovering at the player's shoulder, and renames the helmet
+  via `ItemData.m_customData` + a `GetTooltip` postfix. Whole-creature visuals are cloned inside an
+  inactive holder and stripped to a pure visual in dependency order (so removing a component another
+  still `[RequireComponent]`s never logs an error); a `flying` animator bool is set by hand so flying
+  creatures animate instead of freezing. Each familiar also grants **feather fall** (the Feather
+  Cape's own `SlowFall` effect — non-stacking) and a **small flat attack bonus** matched to the
+  creature (`SE_FamiliarBond`, hooking the game's `ModifyAttack`) while its helmet is equipped.
+  Broadcast on the player's ZDO so other clients render it (`ArmorVfxManager`). Full table in
+  [SHOP.md](SHOP.md)
 - [LocalIdentity.cs](../valheim-plugin/LocalIdentity.cs) — `Steam64()` resolver extracted so the
   pollers can resolve the local id without the panel
 - [DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — the single combined client-side
@@ -94,6 +107,8 @@ The csproj expects these in `valheim-plugin/libs/`. Most come from Valheim's
   Same location.
 - **`UnityEngine.InputLegacyModule.dll`** ← needed for the F4 keybind. Same.
 - **`UnityEngine.TextRenderingModule.dll`** ← needed for `FontStyle` in the panel styles. Same.
+- **`UnityEngine.ParticleSystemModule.dll`** ← needed for the Familiars' particle auras (`ParticleSystem` force-loop / scaling). Same.
+- **`UnityEngine.AnimationModule.dll`** ← needed for the Familiars' cloned creature `Animator`s. Same.
 - `Newtonsoft.Json.dll`
 
 `YamlDotNet` and `Jotunn` are **no longer required** — admin YAML uses a

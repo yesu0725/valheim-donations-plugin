@@ -43,12 +43,12 @@ portal.
 | GET | `/api/grants/pending` | Plugin pulls undelivered grants |
 | POST | `/api/grants/ack` | Plugin confirms grants applied in-game |
 | GET | `/api/grants/balance/{steam64}` | Lookup a player's running balance |
-| POST | `/api/spend` | Atomic, idempotent debit for shop purchases. Enforces the per-player weekly cap for `grant_item` consumables (429 past the cap), and — for `add_charges` SKUs — credits `grant_charges` of `charge_kind` to the `charges` table in the same transaction |
+| POST | `/api/spend` | Atomic, idempotent debit for shop purchases. Enforces the per-player weekly cap for `grant_item` consumables (429 past the cap), and — for `add_charges` SKUs — credits `grant_charges` of `charge_kind` to the `charges` table in the same transaction, subject to an optional `weekly_charge_cap` (shared across every SKU of that `charge_kind`, counted from `charge_grants`; 429 with no debit if it would be exceeded) |
 | POST | `/api/charges/consume` | Plugin reports a charge was used (e.g. a Soulkeeper charge on death). Atomic decrement; returns `{consumed, remaining}` (`consumed:false, remaining:0` when the pool is empty) |
 | POST | `/api/transfer` | Player-to-player gift (debit + grant) |
 | GET | `/api/spends/{steam64}` | Purchase history for one player (audit/debug) |
 | GET | `/api/leaderboard/top` | Lifetime donor ranking |
-| GET | `/api/state/{steam64}` | One-shot snapshot: balance + leaderboard + totals, plus `owned_skus`, `weekly_usage`, `week_resets_in`, and `charges` (per-kind consumable counts) so the client can render the shop's owned/weekly/charge states |
+| GET | `/api/state/{steam64}` | One-shot snapshot: balance + leaderboard + totals, plus `owned_skus`, `weekly_usage`, `week_resets_in`, and `charges` (per-kind consumable counts) so the client can render the shop's owned/weekly/charge states. Also returns `coins_per_usd` (from `settings.coins_per_unit["USD"]`) so the in-game panel shows an authoritative exchange rate rather than a hard-coded one |
 | POST | `/api/admin/links` | Bind provider account ↔ Steam64 manually |
 | POST | `/api/admin/credit-unmatched` | Retroactively credit an `unmatched` donation |
 | POST | `/api/admin/grant` | Free-form coin adjustment |

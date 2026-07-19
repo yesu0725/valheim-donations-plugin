@@ -24,6 +24,10 @@ live outside the repo's tracked source at
 (No `YamlDotNet` dependency — the shop/admin YAML parsers are a built-in
 regex parser, not a real YAML library.)
 
+Shop **preview images are not packaged** — they're operator content referenced
+by `preview_image` in `valcoin_shop.yaml`, not mod assets. Ship them as URLs so
+clients fetch them at runtime.
+
 ## Release checklist
 
 1. Bump the version in **two places** and keep them in sync:

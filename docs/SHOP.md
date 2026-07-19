@@ -94,13 +94,59 @@ were removed — see "Built-in perk handlers" below).
 
 | Field | Used by | Meaning |
 |---|---|---|
-| `name` / `description` / `price` | all | Display + Valcoin cost |
+| `name` / `price` | all | Display label + Valcoin cost |
+| `description` | all (optional) | Short tag shown after the name, e.g. `Best value` (no longer a full sentence) |
 | `effect` | all | `grant_perk` \| `add_charges` \| `grant_item` |
-| `perk` | grant_perk / add_charges | Perk id the `PerkManager` understands |
+| `perk` | grant_perk / add_charges | Perk id / charge-pool key |
 | `charges` | add_charges | Uses granted per purchase |
-| `item` 🔜 | grant_item | Comma list of `prefab` or `prefab:qty` to spawn |
-| `weekly_cap` 🔜 | grant_item | Max purchases per player per week (0 = unlimited) |
-| `requires_boss` 🔜 | grant_item | Global boss key that must be set before buyable |
+| `item` | grant_item | Comma list of `prefab` or `prefab:qty` to spawn |
+| `weekly_cap` | grant_item | Max purchases per player per week (0 = unlimited) |
+| `requires_boss` | grant_item | Global boss key that must be set before buyable |
+| `category` | all | Shop grouping label — SKUs sharing it render under one header |
+| `category_desc` | all (optional) | One-line blurb for the category; set **once** on the first SKU of each group |
+| `preview_image` | all (optional) | Thumbnail shown next to the SKU (Shop tab) and in the purchase-confirm dialog — an `https` URL or a path relative to `BepInEx/config` (e.g. `shop_images/foo.png`) |
+
+**Grouped Shop tab:** the panel groups SKUs by `category` (in first-appearance
+order), drawing one header + one `category_desc` blurb per group, then a compact
+row per item (name · price · action) with a state note (owned / locked /
+"N/week left" / charges held). For `grant_item` SKUs a dim **contents** line is
+auto-derived from `item` (e.g. `Lox Pie x5, Bread x5, Fish Wraps x5`) — so
+dropping per-item prose doesn't hide what a bundle contains. The shipped catalog
+groups into **Soulkeeper Charms**, **Feasts**, **Meads**, and **Supplies**. SKUs
+with no `category` fall into a trailing **More** group.
+
+**Preview images:** a SKU with `preview_image` set shows a 72px thumbnail at the
+left of its Shop row and a 190px centered preview in the purchase-confirm
+dialog. **Clicking either opens a full-size zoom overlay** — the image is fitted
+to 80% of the window, never upscaled past 1:1, and closes on the Close button, a
+click outside it, or Escape. The overlay draws above every other modal, so it can
+be opened from the confirm dialog and dismissed back to it. Images load lazily
+and are cached (see
+[valheim-plugin/ImageCache.cs](../valheim-plugin/ImageCache.cs)); the row
+reserves space up front so it doesn't jump when the image arrives. Because the
+catalog is synced to clients over RPC, an `https` URL set server-side reaches
+everyone, whereas a config-relative path only resolves on machines that hold the
+file — prefer a URL on a dedicated server.
+
+**Exchange-rate note:** the Donate tab leads with a large gold callout —
+**`$1 USD  =  50 Valcoins`** — plus a caption giving a worked example ("a $5
+donation credits about 250 Valcoins"). The Shop tab carries the same rate as a
+compact one-line note. The rate is served by the backend
+(`coins_per_unit["USD"]` in [`config.py`](../backend/app/config.py), surfaced via
+`/api/state` as `coins_per_usd`) rather than hard-coded in the plugin, so it can
+never drift from what donations actually credit. If the service is reachable but
+reports no rate (a backend predating `coins_per_usd`), the callout reads
+"Exchange rate unavailable" instead of silently rendering nothing — a missing
+rate should never be indistinguishable from a bug.
+
+**Native skin + purchase confirm (plugin 5.9.0):** the panel loads Valheim's own
+`AveriaSerifLibre` font (found among the loaded `Font`s, falling back to the
+IMGUI default if a future build renames it) and uses bronze-framed dark-wood
+panel/button textures so it reads as part of the game. Clicking **Buy** no longer
+spends immediately — it opens a **Yes / Cancel confirm modal** (the spend RPC
+only fires on Yes; the panel behind is disabled + dimmed while it's open). For
+`add_charges` (Soulkeeper) purchases the modal and the success message both note
+that charges are credited server-side and may take a few seconds to appear.
 
 ### Built-in perk handlers
 
@@ -126,6 +172,14 @@ it never helps win a fight, even a duel).
   `/api/charges/consume` — reconciling on the next poll (`SoulkeeperPoller`).
 - Three tiers (`soulkeeper_1/5/10`, 300 / 1200 / 1300) use the **decoy effect** —
   the ×5 exists to make ×10 the obvious buy.
+- **Weekly charge cap (v5.15): 10 `soulkeeper` charges per player per week**,
+  **shared across all three tiers** (a `weekly_charge_cap: 10` field on each
+  SKU). The backend counts it from a new `charge_grants` history table (summing
+  `count` within the current week, Monday 00:00 UTC), so it's a budget of
+  *charges*, not purchases — one ×10 exhausts the week. A purchase that would
+  exceed the cap is **rejected whole** (`429`, no coins taken, "resets in Nd
+  Nh"), surfaced in the failed-purchase modal. Legacy plugin builds that don't
+  send the field stay unlimited.
 - **Phase 2 — the Valkyrie carry (`ValkyrieCarry.cs`, prototype):** the *same*
   warded death also arms a carry. The death position (= where the tombstone
   drops) is captured in `Player.OnDeath`. After respawning at the spawn point
@@ -141,6 +195,87 @@ it never helps win a fight, even a duel).
   default on); a watchdog polls `Player.InIntro()` (vanilla
   `Valkyrie.DropPlayer` clears it) with a distance-scaled hard cap — a stall
   degrades to a plain distant teleport to the grave, never a soft-lock.
+- **Tomb repel (v5.15):** on landing at the tombstone (both the flight and the
+  fallback-teleport paths), three shockwave pulses over ~4.5 s stagger and
+  shove every hostile creature within 12 m radially away, so the player isn't
+  mobbed the instant control returns. Each pulse applies a **zero-damage,
+  no-attacker** `HitData` carrying only stagger + push — verified in
+  decompiled `RPC_Damage` that this applies pushback without aggro/aggravation,
+  and `Character.Damage()` routes to whichever peer owns the creature. Players,
+  tamed animals, and bosses are excluded. It clears the landing; it is **not** a
+  lasting safe zone (creatures can wander back).
+
+### `armor_vfx` effect — Familiars (mini flying-creature companions) ✅
+
+Binds a **miniature flying creature** to the buyer's equipped **helmet** — it
+hovers at the player's right shoulder, head height (`ArmorVfx.CompanionOffset`,
+parented to the player root so it doesn't swing with head turns), and the
+helmet gains a matching name suffix. Grew out of a happy accident: the Ghost
+"glow" clone looked like a mini ghost pet, so the whole category pivoted. See
+[ArmorVfx.cs](../valheim-plugin/ArmorVfx.cs).
+
+Each familiar grants two small perks while its helmet is equipped (v5.15):
+
+- **Feather fall** — the exact `SlowFall` `StatusEffect` the **Feather Cape**
+  equips, pulled off the `CapeFeather` item asset. Because it's the same
+  effect, wearing the cape *and* a familiar helmet doesn't stack (one icon);
+  removing the helmet leaves it alone if the cape is still on.
+- **A tiny flat attack bonus** — a real `StatusEffect` (`SE_FamiliarBond`)
+  hooking the game's own `ModifyAttack`, so it applies to melee, bows, and
+  magic alike, swaps when you change familiars, and re-applies after death.
+  The numbers are 1–4 % of endgame weapon damage — flavor, not power; it stays
+  inside the "never helps you win a fight" balance rule.
+
+Eight familiars (category **Familiars**, priced by progression tier). The Ghost
+keeps the original particle-child + green point-light build; the other seven
+clone the creature prefab's **whole visual**: instantiated inside an *inactive
+holder* (so Awake never runs on AI/network/physics components), then everything
+except renderers / particles / animator / LODs / lights is `DestroyImmediate`d
+in **dependency order** (a pass skips any component another still
+`[RequireComponent]`s, e.g. `CharacterDrop`→`Humanoid`, so Unity never logs
+"Can't remove X"). Nothing real ever spawns (no ZNetView/ZDO, no Character, no
+colliders). Flying creatures need the `flying` animator bool set by hand (we
+stripped `Character`), so `TuneAnimators` sets it — otherwise the Hatchling
+freezes. A **spawn/despawn poof** (`vfx_spawn_small`) plays when a familiar
+appears (helmet equipped / comes into view) or vanishes (unequipped).
+
+| SKU | `perk` | Creature prefab | Price | Attack bonus | Suffix |
+|---|---|---|---|---|---|
+| `familiar_bat` | `bat` | `Bat` | 400 | +2 slash | *…of the Bat* |
+| `familiar_ghost` | `ghostlight` | `Ghost` (particle child) | 500 | +2 slash | *…of the Ghost* |
+| `familiar_deathsquito` | `deathsquito` | `Deathsquito` | 600 | +2 pierce | *…of the Deathsquito* |
+| `familiar_hatchling` | `hatchling` | `Hatchling` | 700 | +2 frost | *…of the Drake* |
+| `familiar_wraith` | `wraith` | `Wraith` | 800 | +2 slash | *…of the Wraith* |
+| `familiar_volture` | `volture` | `Volture` | 900 | +3 pierce | *…of the Volture* |
+| `familiar_gjall` | `gjall` | `Gjall` (0.08×, drips stripped) | 1100 | +2 blunt, +1 fire | *…of the Gjall* |
+| `familiar_valkyrie` | `fallen_valkyrie` | `FallenValkyrie` (0.15×) | 1300 | +2 spirit | *…of the Valkyrie* |
+
+The **Gjall's tar drips** are destroyed on spawn (`StripChildHints`), and both
+the Gjall and Fallen Valkyrie shrink their particle emission (start size /
+speed / gravity / shape radius, each × the body scale) so the drips and smoke
+match the mini-pet body instead of dwarfing it.
+
+Flow: **Buy → confirm modal** (states it binds to your helmet, lists feather
+fall + the attack bonus, and **warns if the equipped helmet already has a
+familiar** — buying overwrites it, only on the Yes button) → the buyer's client
+gets an `__ARMORVFX__:<aura>:head` control message and applies it locally
+(helmet must be equipped).
+
+- **Source of truth = the item.** The aura is stamped on the equipped item via
+  `ItemData.m_customData["vc_armor_vfx"]`, so it persists across relogs and
+  drives the rename (a `GetHoverName` postfix appends the suffix — per-instance,
+  so only the enchanted piece renames). Requires that piece to be equipped.
+- **Others see it too.** The local player mirrors "aura per equipped slot" onto
+  their own **Player ZDO** (`vc_vfx_head/chest/legs`), which replicates to every
+  client. `ArmorVfxManager` (client-only, ~0.75 s tick) reads every visible
+  player's ZDO and attaches/detaches the particle prefab on the matching body
+  part (`VisEquipment` instance / bone), re-attaching after re-equips.
+- **Prototype caveats:** prefabs resolve via `ZNetScene.GetPrefab` then a cached
+  `Resources` scan; instantiated copies are stripped of `ZNetView` /
+  `TimedDestruction` etc. so they persist as pure local visuals. If a prefab
+  can't be found or still self-destructs on some build, the **purchase + rename
+  still succeed** and it logs under `[Valcoin][ArmorVfx]` — the visual degrades,
+  never crashes. Needs in-game verification (prefab resolution + loop behavior).
 
 ### `grant_item` effect (weekly-limited consumables) 🔜
 
@@ -175,8 +310,8 @@ Shipped default catalog (9 weekly-limited `grant_item` bundles):
 
 The `grant_item` effect + weekly cap + `requires_boss` gate are **implemented and
 live** (`Catalog.cs`, `ShopHandler.cs`, `/api/spend`) — see [PLUGIN.md](PLUGIN.md)
-and [BACKEND.md](BACKEND.md). All 12 SKUs (3 Soulkeeper Charm charge tiers +
-9 `grant_item` bundles) ship as the auto-generated default
+and [BACKEND.md](BACKEND.md). All 20 SKUs (3 Soulkeeper Charm charge tiers +
+8 Familiars + 9 `grant_item` bundles) ship as the auto-generated default
 `valcoin_shop.yaml`, so a fresh install gets the full catalog. **A server that
 already generated the old 3-SKU `valcoin_shop.yaml` will NOT auto-overwrite it**
 (`EnsureFile` skips when the file exists) — replace that YAML on the host and

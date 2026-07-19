@@ -16,6 +16,7 @@ using UnityEngine;
 //       price: 500
 //       effect: grant_perk
 //       perk: donor_badge
+//       preview_image: "shop_images/donor_badge.png"   # optional thumbnail (URL or config-relative path)
 //
 //     food_t2:                     # grant_item — weekly-limited consumable
 //       name: "Plains Feast (bundle)"
@@ -33,14 +34,18 @@ public static class Catalog
     {
         public string Id;            // map key
         public string Name;          // human label
-        public string Description;
+        public string Description;   // optional short per-item tag (e.g. "Best value")
         public int    Price;
         public string Effect;        // grant_perk | add_charges | grant_item
         public string Perk;          // identifier the PerkManager understands (perk effects)
         public int    Charges = 1;   // for add_charges effect
+        public int    WeeklyChargeCap; // add_charges: max charges of this kind per player per week (0 = unlimited)
         public string Item;          // grant_item: comma list of "prefab" or "prefab:qty"
         public int    WeeklyCap;     // grant_item: max purchases per player per week (0 = unlimited)
         public string RequiresBoss;  // grant_item: global boss key gate, e.g. defeated_bonemass (optional)
+        public string Category;      // shop grouping label, e.g. "Feasts" (blank = "More")
+        public string CategoryDesc;  // one-line blurb for the category; set once on the first SKU of a group
+        public string PreviewImage;  // optional thumbnail: https URL or a path relative to BepInEx/config (blank = none)
     }
 
     public static Dictionary<string, Sku> Items { get; private set; } = new Dictionary<string, Sku>();
@@ -80,45 +85,127 @@ public static class Catalog
 #   effect:        grant_perk | add_charges | grant_item
 #   perk:          (perk effects) identifier the plugin understands
 #   charges:       (add_charges) how many uses each purchase grants
+#   weekly_charge_cap: (add_charges) max charges of this kind per player per week (0 = unlimited)
 #   item:          (grant_item) comma list of ""prefab"" or ""prefab:qty""
 #   weekly_cap:    (grant_item) max purchases per player per week (0 = unlimited)
 #   requires_boss: (grant_item) global boss key gate, e.g. defeated_bonemass
+#   preview_image: (optional) thumbnail shown in the Shop tab - an https URL, or
+#                  a path relative to BepInEx/config (e.g. shop_images/foo.png)
 # A full ecosystem-aware catalog is in examples/valcoin_shop.example.yaml.
 # Edit and restart the server to apply changes.
 
 shop:
 
-  # ---------- Convenience: Soulkeeper Charm (death insurance) ----------
+  # ---------- Soulkeeper Charms (death insurance) ----------
   # Charges of one shared 'soulkeeper' pool. On death you keep your skills (no
-  # skill drain). Never helps you win a fight - it only softens the death tax.
+  # skill drain) and a Valkyrie carries you back to your tombstone. Never helps
+  # you win a fight - it only softens the death tax. `category_desc` is set once
+  # on the first SKU of each group and drives the Shop tab's category blurb.
   soulkeeper_1:
+    category: ""Soulkeeper Charms""
+    category_desc: ""Death insurance - keep your skills on death (no drain) and a Valkyrie carries you back to your tombstone, scattering nearby creatures on arrival. Limited to 10 charges per week. PvE-safe; never helps you win a fight.""
     name: ""Soulkeeper Charm (x1)""
-    description: ""On death, keep your skills - no skill drain. Adds 1 charge.""
     price: 300
     effect: add_charges
     perk: soulkeeper
     charges: 1
+    weekly_charge_cap: 10
 
   soulkeeper_5:
+    category: ""Soulkeeper Charms""
     name: ""Soulkeeper Charm (x5)""
-    description: ""On death, keep your skills - no skill drain. Adds 5 charges.""
     price: 1200
     effect: add_charges
     perk: soulkeeper
     charges: 5
+    weekly_charge_cap: 10
 
   soulkeeper_10:
+    category: ""Soulkeeper Charms""
     name: ""Soulkeeper Charm (x10)""
-    description: ""On death, keep your skills - no skill drain. Adds 10 charges. Best value.""
+    description: ""Best value""
     price: 1300
     effect: add_charges
     perk: soulkeeper
     charges: 10
+    weekly_charge_cap: 10
 
-  # ---------- Weekly-limited food (progression-gated) ----------
+  # ---------- Familiars (mini flying-creature companions) ----------
+  # armor_vfx binds a miniature flying creature to your equipped helmet - it
+  # hovers at your right shoulder, head height. Each grants feather fall plus
+  # a tiny flat attack bonus (+2/+3 of the creature's damage type - flavor,
+  # not power; weapons deal 50-150). `perk` selects the familiar; visuals and
+  # stats live in the plugin's ArmorVfx registry. Priced by progression tier.
+  familiar_bat:
+    category: ""Familiars""
+    category_desc: ""A miniature flying creature hovers at your shoulder, bound to your equipped helmet (renames it to match). Grants feather fall and a small attack bonus. Other players see it too.""
+    name: ""Bat Familiar""
+    description: ""+2 slash""
+    price: 400
+    effect: armor_vfx
+    perk: bat
+
+  familiar_ghost:
+    category: ""Familiars""
+    name: ""Ghost Familiar""
+    description: ""+2 slash""
+    price: 500
+    effect: armor_vfx
+    perk: ghostlight
+
+  familiar_deathsquito:
+    category: ""Familiars""
+    name: ""Deathsquito Familiar""
+    description: ""+2 pierce""
+    price: 600
+    effect: armor_vfx
+    perk: deathsquito
+
+  familiar_hatchling:
+    category: ""Familiars""
+    name: ""Drake Hatchling Familiar""
+    description: ""+2 frost""
+    price: 700
+    effect: armor_vfx
+    perk: hatchling
+
+  familiar_wraith:
+    category: ""Familiars""
+    name: ""Wraith Familiar""
+    description: ""+2 slash""
+    price: 800
+    effect: armor_vfx
+    perk: wraith
+
+  familiar_volture:
+    category: ""Familiars""
+    name: ""Volture Familiar""
+    description: ""+3 pierce""
+    price: 900
+    effect: armor_vfx
+    perk: volture
+
+  familiar_gjall:
+    category: ""Familiars""
+    name: ""Gjall Familiar""
+    description: ""+2 blunt, +1 fire""
+    price: 1100
+    effect: armor_vfx
+    perk: gjall
+
+  familiar_valkyrie:
+    category: ""Familiars""
+    name: ""Fallen Valkyrie Familiar""
+    description: ""+2 spirit""
+    price: 1300
+    effect: armor_vfx
+    perk: fallen_valkyrie
+
+  # ---------- Feasts (progression-gated food) ----------
   food_t1:
-    name: ""Swamp Feast (bundle)""
-    description: ""Sausages + Blood Pudding + Serpent Stew, x5 each. Requires Bonemass.""
+    category: ""Feasts""
+    category_desc: ""Top-tier cooked meals, 5 of each dish. Weekly-limited, and each unlocks once you've beaten its biome boss.""
+    name: ""Swamp Feast""
     price: 120
     effect: grant_item
     item: ""Sausages:5,BloodPudding:5,SerpentStew:5""
@@ -126,8 +213,8 @@ shop:
     requires_boss: defeated_bonemass
 
   food_t2:
-    name: ""Plains Feast (bundle)""
-    description: ""Lox Meat Pie + Bread + Fish Wraps, x5 each. Requires Yagluth.""
+    category: ""Feasts""
+    name: ""Plains Feast""
     price: 180
     effect: grant_item
     item: ""LoxPie:5,Bread:5,FishWraps:5""
@@ -135,8 +222,8 @@ shop:
     requires_boss: defeated_goblinking
 
   food_t3:
-    name: ""Mistlands Feast (bundle)""
-    description: ""Misthare Supreme + Mushroom Omelette + Yggdrasil Porridge, x5 each. Requires the Queen.""
+    category: ""Feasts""
+    name: ""Mistlands Feast""
     price: 260
     effect: grant_item
     item: ""MisthareSupreme:5,MushroomOmelette:5,YggdrasilPorridge:5""
@@ -144,26 +231,27 @@ shop:
     requires_boss: defeated_queen
 
   food_t4:
-    name: ""Ashlands Feast (bundle)""
-    description: ""Mashed Meat + Piquant Pie + Marinated Greens, x5 each. Requires the Ashlands boss.""
+    category: ""Feasts""
+    name: ""Ashlands Feast""
     price: 350
     effect: grant_item
     item: ""MashedMeat:5,PiquantPie:5,MarinatedGreens:5""
     weekly_cap: 2
     requires_boss: defeated_fader
 
-  # ---------- Weekly-limited meads ----------
+  # ---------- Meads ----------
   meads_utility:
-    name: ""Utility Meads (bundle)""
-    description: ""Tasty + Frost Resistance + Poison Resistance mead, x5 each.""
+    category: ""Meads""
+    category_desc: ""Mead bundles, 5 of each. Weekly-limited; some unlock after their boss.""
+    name: ""Utility Meads""
     price: 100
     effect: grant_item
     item: ""MeadTasty:5,MeadFrostResist:5,MeadPoisonResist:5""
     weekly_cap: 3
 
   meads_vitality:
-    name: ""Vitality Meads (bundle)""
-    description: ""Medium Healing + Medium Stamina mead, x5 each. Requires Bonemass.""
+    category: ""Meads""
+    name: ""Vitality Meads""
     price: 160
     effect: grant_item
     item: ""MeadHealthMedium:5,MeadStaminaMedium:5""
@@ -171,18 +259,19 @@ shop:
     requires_boss: defeated_bonemass
 
   meads_eitr:
-    name: ""Eitr Meads (bundle)""
-    description: ""Minor Eitr mead, x5. Requires the Queen.""
+    category: ""Meads""
+    name: ""Eitr Meads""
     price: 160
     effect: grant_item
     item: ""MeadEitrMinor:5""
     weekly_cap: 2
     requires_boss: defeated_queen
 
-  # ---------- Weekly-limited materials ----------
+  # ---------- Supplies (materials & seeds) ----------
   farm_bundle:
+    category: ""Supplies""
+    category_desc: ""Grind-heavy materials and seeds in bulk. Weekly-limited.""
     name: ""Farmer's Crate""
-    description: ""Barley + Flax + Onion/Carrot/Turnip seeds, x20 each. Requires Yagluth (barley/flax).""
     price: 120
     effect: grant_item
     item: ""Barley:20,Flax:20,OnionSeeds:20,CarrotSeeds:20,TurnipSeeds:20""
@@ -190,8 +279,8 @@ shop:
     requires_boss: defeated_goblinking
 
   forage_bundle:
+    category: ""Supplies""
     name: ""Forager's Crate""
-    description: ""Coal x50, Resin x50, Feathers x50, Thistle/Dandelion/Honey x20. No gate.""
     price: 100
     effect: grant_item
     item: ""Coal:50,Resin:50,Feathers:50,Thistle:20,Dandelion:20,Honey:20""
@@ -260,7 +349,11 @@ shop:
                     case "charges":       int.TryParse(val, out current.Charges); break;
                     case "item":          current.Item = val; break;
                     case "weekly_cap":    int.TryParse(val, out current.WeeklyCap); break;
+                    case "weekly_charge_cap": int.TryParse(val, out current.WeeklyChargeCap); break;
                     case "requires_boss": current.RequiresBoss = val; break;
+                    case "category":      current.Category = val; break;
+                    case "category_desc": current.CategoryDesc = val; break;
+                    case "preview_image": current.PreviewImage = val; break;
                 }
                 continue;
             }
