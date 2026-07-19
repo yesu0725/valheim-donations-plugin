@@ -1,7 +1,9 @@
 # Status Snapshot
 
 This file decays fastest of anything in `docs/` — check the actual source
-files before trusting it if it's been a while.
+files before trusting it if it's been a while. For *what changed* rather than
+*what's true now*, see [CHANGELOG.md](CHANGELOG.md), which also carries the
+plugin↔backend compatibility matrix.
 
 - **Project phase:** 6+ — backend is **live on Fly.io** with **all four
   providers configured** (Ko-fi, Patreon, PayPal, PayMongo), plugin catalog

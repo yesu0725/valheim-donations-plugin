@@ -33,6 +33,7 @@ safe. The backend owns the coin ledger; the plugin owns the perk/SKU effects.
 | Doc | Covers |
 |---|---|
 | [docs/STATUS.md](docs/STATUS.md) | Current versions, phase, known build/config discrepancies |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release history for **both** halves + plugin↔backend compatibility matrix |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Donation flow, endpoint map, DB schema, idempotency model |
 | [docs/BACKEND.md](docs/BACKEND.md) | FastAPI layout, endpoints, currency conversion, local dev, tests |
 | [docs/PLUGIN.md](docs/PLUGIN.md) | BepInEx plugin layout, build, required DLLs, config files |

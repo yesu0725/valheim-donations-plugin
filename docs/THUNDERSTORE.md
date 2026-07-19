@@ -41,7 +41,14 @@ clients fetch them at runtime.
    Copy-Item valheim-plugin\bin\Release\ValheimDonationSystem.dll `
      "Thunderstore files\Valheim_Donations\ValheimDonationSystem.dll" -Force
    ```
-5. Add a new entry to `Thunderstore files/Valheim_Donations/CHANGELOG.md`.
+5. Add a new entry to **both** changelogs — they serve different readers and
+   neither is generated from the other:
+   - `Thunderstore files/Valheim_Donations/CHANGELOG.md` — player-facing, shown
+     on the listing page. Plugin only, end-user language, no API detail.
+   - [`docs/CHANGELOG.md`](CHANGELOG.md) — engineering-facing. Covers the
+     backend too, and carries the plugin↔backend **compatibility matrix**; if
+     the release needs a minimum backend version, that table is where operators
+     will look for it.
 6. Zip the five files **flat at the zip root** (a manifest nested in a
    subfolder is rejected by Thunderstore):
    ```powershell
