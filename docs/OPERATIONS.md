@@ -66,10 +66,13 @@ played**. A worked example (2026-07-20):
   (your-app.fly.dev). … Donation actions are disabled until then.` →
   `Backend ready: False`. That one line is the whole diagnosis.
 - **Root cause:** the machine has several r2modman profiles, and the one being
-  played (`Heathbound Server` — note the typo, missing an `r`) had the untouched
-  **template** `valcoin_config.json`. `deploy.ps1` only targets
-  `Hearthbound Valheim - Test` and the dedicated server, so this profile got the
-  DLL by hand at some point but was never configured.
+  played (then named `Heathbound Server` — note the typo, missing an `r`) had the
+  untouched **template** `valcoin_config.json`. `deploy.ps1` didn't target it, so
+  it got the DLL by hand at some point but was never configured.
+- **Resolved:** the profile was renamed to `Hearthbound Server`, `deploy.ps1`
+  was repointed at it, and the script now emits a placeholder-config warning at
+  deploy time (see the gotcha below). This class of bug had bitten twice before
+  it was caught here.
 
 **How to find the profile that's actually running** (r2modman rewrites
 `LogOutput.log` on each modded launch, so the freshest log wins):

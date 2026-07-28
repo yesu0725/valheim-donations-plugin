@@ -13,12 +13,20 @@ $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dll  = Join-Path $here 'bin\Release\ValheimDonationSystem.dll'
 
-# Both client profiles are kept in lockstep: "Hearthbound Valheim" is the live
-# profile the server-connected client runs; "Hearthbound Valheim - Test" is the
-# testing profile. Any missing folder is skipped, so this is safe if one
-# profile doesn't exist on a given machine.
+# Destinations, kept in lockstep:
+#   "Hearthbound Server"        - the LIVE profile actually launched/played
+#                                 (was briefly the typo'd "Heathbound Server";
+#                                  an even older "Hearthbound Valheim" entry here
+#                                  pointed at a profile that never existed and
+#                                  silently SKIP'd, which is how the played
+#                                  profile went un-updated - see docs/OPERATIONS.md).
+#   "Hearthbound Valheim - Test" - the testing profile.
+#   dedicated server            - the headless server.
+# Any missing folder is skipped, so this is safe if one isn't on a given machine
+# -- but a SKIP on the profile you actually play means a STALE plugin. If you
+# rename a profile in r2modman, update the matching path here too.
 $pluginFolders = @(
-  'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Valheim\BepInEx\plugins',
+  'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Server\BepInEx\plugins',
   'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Valheim - Test\BepInEx\plugins',
   'C:\Program Files (x86)\Steam\steamapps\common\Valheim dedicated server\BepInEx\plugins'
 )
@@ -54,5 +62,20 @@ foreach ($pluginFolder in $pluginFolders) {
     # Most common cause: the dedicated server is running and holds the DLL.
     Write-Host "FAILED  -> $dest" -ForegroundColor Red
     Write-Host "         ($($_.Exception.Message)) — is the dedicated server running? Stop it and re-run with -NoBuild." -ForegroundColor Red
+  }
+
+  # This script deploys the DLL only, never config. A profile can have a current
+  # DLL but a placeholder valcoin_config.json (never set up), which makes the
+  # in-game panel show "Offline" — exactly the 2026-07-20 incident. Warn on it
+  # here so a stale/unconfigured profile is caught at deploy time, not in-game.
+  # Read-only: never writes the token; that's a one-time manual setup.
+  $cfg = Join-Path (Split-Path $pluginFolder) 'config\valcoin_config.json'
+  if (Test-Path $cfg) {
+    $c = Get-Content $cfg -Raw
+    if ($c -match 'your-app\.fly\.dev' -or $c -match 'paste-the-') {
+      Write-Host "  WARN: $cfg still has PLACEHOLDER backend_url/plugin_token — this profile will show Offline until you set the real values." -ForegroundColor Yellow
+    }
+  } else {
+    Write-Host "  note: no valcoin_config.json yet at $cfg (the plugin writes a template on first launch)." -ForegroundColor DarkGray
   }
 }

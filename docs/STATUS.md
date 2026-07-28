@@ -23,13 +23,12 @@ plugin↔backend compatibility matrix.
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
 - **Plugin version:** `5.16.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
-  Deployed to the `Hearthbound Valheim - Test` r2modman profile and the
-  dedicated server via `deploy.ps1`. **NOTE:** `deploy.ps1` targets a
-  `Hearthbound Valheim` profile that doesn't exist (prints `SKIP`), and does
-  **not** target `Heathbound Server` — the profile actually being played. That
-  profile got the 5.16.0 DLL but not a config, causing the 2026-07-20 Offline
-  incident (see Known discrepancies). **Restart the server + client to load
-  5.16.0.**
+  Deployed via `deploy.ps1` to all three real destinations: the played profile
+  **`Hearthbound Server`**, the `Hearthbound Valheim - Test` profile, and the
+  dedicated server. (The played profile was renamed 2026-07-20 from the typo'd
+  `Heathbound Server`, and `deploy.ps1`'s dead `Hearthbound Valheim` entry was
+  repointed at it — see Known discrepancies for the Offline incident this
+  resolved.) **Restart the server + client to load 5.16.0.**
   **5.16.0** adds **shop preview images** (optional `preview_image` per SKU —
   `https` URL or a path relative to `BepInEx/config`; loaded async and cached by
   [ImageCache.cs](../valheim-plugin/ImageCache.cs)), a **click-to-enlarge zoom
@@ -100,9 +99,13 @@ the correct 5.16.0 DLL but its config was still the placeholder template
 the working `backend_url` + `plugin_token` from the Test profile into it
 (`.bak` left beside it); **requires a game restart** to take effect.
 
-**Still to do:** either add `Heathbound Server` to `deploy.ps1`'s destination
-list (so it gets DLL + config on every deploy) or rename it to `Hearthbound …`
-to match — otherwise every rebuild leaves the play profile on a stale DLL. See
+**Resolved 2026-07-20:** the profile was renamed `Heathbound Server` →
+**`Hearthbound Server`** (typo fixed), `deploy.ps1`'s dead `Hearthbound Valheim`
+entry was repointed at it, and the script now prints a **placeholder-config
+warning** per profile at deploy time (it copies the DLL only, so a current DLL
++ template config — the exact failure here — otherwise goes unnoticed until
+in-game). A verified `deploy.ps1 -NoBuild` now copies to all three real
+destinations with no `SKIP` and no warning. See
 [OPERATIONS.md](OPERATIONS.md#offline-panel-check-the-right-profile-first).
 
 ### Soulkeeper Charm added; cosmetic perks + chat decoration removed (2026-07-12)
