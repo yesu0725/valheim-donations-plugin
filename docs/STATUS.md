@@ -24,10 +24,12 @@ plugin↔backend compatibility matrix.
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
 - **Plugin version:** `5.16.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
   Deployed to the `Hearthbound Valheim - Test` r2modman profile and the
-  dedicated server via `deploy.ps1`. NOTE: the `Hearthbound Valheim` (non-test)
-  profile **no longer exists on this machine** and is now silently skipped by
-  `deploy.ps1` — recreate it or drop it from the script's list.
-  **Restart the server + client to load 5.16.0.**
+  dedicated server via `deploy.ps1`. **NOTE:** `deploy.ps1` targets a
+  `Hearthbound Valheim` profile that doesn't exist (prints `SKIP`), and does
+  **not** target `Heathbound Server` — the profile actually being played. That
+  profile got the 5.16.0 DLL but not a config, causing the 2026-07-20 Offline
+  incident (see Known discrepancies). **Restart the server + client to load
+  5.16.0.**
   **5.16.0** adds **shop preview images** (optional `preview_image` per SKU —
   `https` URL or a path relative to `BepInEx/config`; loaded async and cached by
   [ImageCache.cs](../valheim-plugin/ImageCache.cs)), a **click-to-enlarge zoom
@@ -82,13 +84,26 @@ Worth downscaling first — the sources are 300–780 KB each (~3.5 MB total) fo
 images that render at 72px in the shop row, so every client would pay that
 download for nothing.
 
-### `deploy.ps1` silently skips a profile that no longer exists (2026-07-19)
+### `deploy.ps1` targets the wrong profiles — real play profile is missed (2026-07-20)
 
-`deploy.ps1` lists three destinations; the `Hearthbound Valheim` (non-test)
-r2modman profile is **gone from this machine**, so every deploy prints
-`SKIP (missing folder)` and copies to only two. That's by design (the script
-tolerates missing folders), but it means "deployed" now covers the test profile
-and the dedicated server only. Recreate the profile or prune the list.
+`deploy.ps1` lists a `Hearthbound Valheim` (non-test) r2modman profile that
+**does not exist**; every deploy prints `SKIP (missing folder)` for it and
+copies to only the Test profile + dedicated server. The actual profiles on this
+machine are: `Default`, `Hearthbound Valheim - Test`, **`Heathbound Server`**
+(note the typo — missing `r`), `Mod Test Profile`, `_snapshots`.
+
+**`Heathbound Server` is the profile actually being played**, and the script
+doesn't target it — so it never received a configured `valcoin_config.json`.
+On 2026-07-20 this surfaced as a persistent **Offline** panel: the profile ran
+the correct 5.16.0 DLL but its config was still the placeholder template
+(`your-app.fly.dev` / `paste-the-…`), so `Backend ready: False`. Fixed by copying
+the working `backend_url` + `plugin_token` from the Test profile into it
+(`.bak` left beside it); **requires a game restart** to take effect.
+
+**Still to do:** either add `Heathbound Server` to `deploy.ps1`'s destination
+list (so it gets DLL + config on every deploy) or rename it to `Hearthbound …`
+to match — otherwise every rebuild leaves the play profile on a stale DLL. See
+[OPERATIONS.md](OPERATIONS.md#offline-panel-check-the-right-profile-first).
 
 ### Soulkeeper Charm added; cosmetic perks + chat decoration removed (2026-07-12)
 
@@ -145,15 +160,26 @@ squares. Donate replies now use a structured `__DONATE__:code|url|ttl` /
 `__DONATE_ERR__:msg` wire format (see `Flows.cs` /
 `DonationPanel.OnServerMessage`).
 
-### Client r2modman profile is "Hearthbound Valheim" (not "- Test")
+### Which client profile is "live" keeps drifting — recurring Offline cause
 
-The live client runs the **`Hearthbound Valheim`** r2modman profile, not
-`Hearthbound Valheim - Test`. `deploy.ps1` originally targeted the `- Test`
-profile, so several deploys landed in the wrong place and the running client
-stayed on a stale DLL with placeholder config (showed "Offline"). `deploy.ps1`
-now targets the correct profile. If "Offline" recurs, first confirm which
-profile is actually launched and that its `valcoin_config.json` has the live
-`backend_url` + `plugin_token`.
+**This has now bitten twice**, and the earlier fix was based on a wrong profile
+name. History:
+
+- The live client does **not** run `Hearthbound Valheim - Test`. An earlier pass
+  believed it ran `Hearthbound Valheim` and pointed `deploy.ps1` there — but no
+  such profile exists on this machine (it `SKIP`s).
+- As of 2026-07-20 the played profile is confirmed to be **`Heathbound Server`**
+  (typo, missing `r`), which `deploy.ps1` does not target at all. It ran the
+  right DLL but a placeholder `valcoin_config.json`, so the panel showed
+  **Offline** — see the dated discrepancy above.
+
+**Whenever Offline recurs, don't guess the profile — measure it.** The freshest
+`BepInEx/LogOutput.log` across all profiles is the one being launched; then read
+that log's `[Valcoin]` lines (they name the exact reason) and check its
+`valcoin_config.json` for placeholder values. Full procedure in
+[OPERATIONS.md](OPERATIONS.md#offline-panel-check-the-right-profile-first). The
+durable fix is to make `deploy.ps1`'s destination list match the profile
+actually played (or rename the profile to match the list).
 
 ### Chat/console commands removed — BREAKING (2026-07-09)
 

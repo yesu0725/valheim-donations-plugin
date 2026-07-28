@@ -43,7 +43,7 @@ poll cycle reconciles it.
 | Symptom | Likely cause |
 |---|---|
 | 503 from a `/webhooks/*` route | That provider's env vars are unset on the backend. Set them and redeploy — see [PROVIDERS.md](PROVIDERS.md). |
-| Plugin logs `Backend ready: False` | `backend_url` or `plugin_token` in `valcoin_config.json` is wrong, or the backend isn't reachable from the server box. |
+| Panel shows **Offline** / plugin logs `Backend ready: False` | `backend_url` or `plugin_token` in `valcoin_config.json` is still the **placeholder** (`your-app.fly.dev` / `paste-the-…`), wrong, or the backend isn't reachable. The plugin deliberately treats the template values as not-configured. **Read the log** — it names the exact reason. See "Offline panel: check the right profile" below. |
 | Plugin builds but won't load | A Unity DLL is missing from `libs/` — see [PLUGIN.md](PLUGIN.md)'s DLL table. |
 | Donor paid but no in-game credit | Check the unmatched list first. If the donation isn't there at all, the webhook didn't fire — most provider dashboards have a manual retry/redeliver button. |
 | Buying a consumable says "cap reached" | Expected once a `grant_item` SKU's **weekly cap** is hit for that player — resets on the weekly boundary (recommend Monday 00:00 server time). Enforced backend-side on `/api/spend`. |
@@ -51,6 +51,47 @@ poll cycle reconciles it.
 | Coins debited but consumable not received | A `grant_item` SKU with a **wrong prefab id** (e.g. an unverified Ashlands food) charges and gives nothing. Verify prefab ids against your Valheim version. |
 | *(removed)* `/sethome` / `/home` / `/shout` | These commands + their perks were removed by design decision — see [SHOP.md](../docs/SHOP.md). |
 | *(removed)* all chat/console commands | `/donate`, `/buy`, `/gift`, `/coins`, `/topdonors`, `/title`, `/givecoins`, `/removecoins` are all gone — everything is the in-game panel (F4) only now. See [SHOP.md](../docs/SHOP.md#no-chat-or-console-commands). |
+
+## Offline panel: check the *right* profile first
+
+When the in-game panel shows **Offline**, the backend is usually fine — the
+cause is almost always the **client config on the profile actually being
+played**. A worked example (2026-07-20):
+
+- The live backend was healthy: `curl https://valheim-donations.fly.dev/` → 200,
+  and `/api/state/<id>` with the real token → 200. Not the problem.
+- The **plugin logs are the fastest diagnosis.** The client's
+  `BepInEx/LogOutput.log` had, verbatim:
+  `[Valcoin] valcoin_config.json still has the PLACEHOLDER backend_url
+  (your-app.fly.dev). … Donation actions are disabled until then.` →
+  `Backend ready: False`. That one line is the whole diagnosis.
+- **Root cause:** the machine has several r2modman profiles, and the one being
+  played (`Heathbound Server` — note the typo, missing an `r`) had the untouched
+  **template** `valcoin_config.json`. `deploy.ps1` only targets
+  `Hearthbound Valheim - Test` and the dedicated server, so this profile got the
+  DLL by hand at some point but was never configured.
+
+**How to find the profile that's actually running** (r2modman rewrites
+`LogOutput.log` on each modded launch, so the freshest log wins):
+
+```bash
+base="$APPDATA/r2modmanPlus-local/Valheim/profiles"
+for p in "$base"/*/; do
+  echo "$(stat -c '%y' "$p/BepInEx/LogOutput.log" 2>/dev/null)  $(basename "$p")"
+done | sort   # newest = the profile you're playing
+```
+
+Then check that profile's `BepInEx/config/valcoin_config.json` for placeholder
+values, and **restart the game** after fixing it — the plugin reads config once
+at startup (`Config.Load()` in `Awake`), so a live session won't pick up an
+edit.
+
+> **Gotcha:** a profile name typo (`Heathbound` vs `Hearthbound`) is exactly how
+> a profile slips past `deploy.ps1`'s target list. If you play from a profile
+> the script doesn't list, every rebuild silently leaves it on an old DLL and
+> its config untouched. Add the profile to the script (see below) or rename it
+> to match. `deploy.ps1` tolerates missing folders, so a stale/renamed entry
+> just prints `SKIP (missing folder)` rather than erroring — easy to miss.
 
 ## Verifying a change end-to-end
 
