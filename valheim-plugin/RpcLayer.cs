@@ -22,6 +22,7 @@ public static class RpcLayer
     public const string PanelRpc   = "vc_panel";
     public const string CatalogRpc = "vc_catalog";
     public const string QuestsRpc  = "vc_quests";
+    public const string QuestAckRpc = "vc_questack";
 
     private static bool _registeredServer;
     private static bool _registeredClient;
@@ -44,8 +45,10 @@ public static class RpcLayer
             ZRoutedRpc.instance.Register<string>(PanelRpc, HandlePanelOnClient);
             ZRoutedRpc.instance.Register<string>(CatalogRpc, HandleCatalogOnClient);
             ZRoutedRpc.instance.Register<string>(QuestsRpc, HandleQuestsOnClient);
+            ZRoutedRpc.instance.Register<string>(QuestAckRpc, HandleQuestAckOnClient);
             _registeredClient = true;
-            Debug.Log("[Valcoin] RPC registered (client): " + PanelRpc + ", " + CatalogRpc + ", " + QuestsRpc);
+            Debug.Log("[Valcoin] RPC registered (client): " + PanelRpc + ", " + CatalogRpc
+                      + ", " + QuestsRpc + ", " + QuestAckRpc);
         }
     }
 
@@ -129,5 +132,26 @@ public static class RpcLayer
         if (ZNet.instance != null && ZNet.instance.IsServer()) return;
         try { QuestCatalog.ApplyRemote(json); }
         catch (Exception ex) { Debug.LogError("[Valcoin] Quest catalog apply failed: " + ex); }
+    }
+
+    // ─── Server → client: quest report acknowledged ────────────────────────
+    //
+    // Sent only once the server has a DEFINITIVE answer from the backend
+    // (credited / already claimed / capped). Until this arrives the client
+    // keeps the "VC.Q.<id>" key and re-reports, so a server that can't handle
+    // the report — an old build with no quest handler, a backend outage, a
+    // quest with no price — postpones the payout instead of destroying it.
+
+    public static void SendQuestAck(long peerID, string questId)
+    {
+        if (ZRoutedRpc.instance == null || string.IsNullOrEmpty(questId)) return;
+        try { ZRoutedRpc.instance.InvokeRoutedRPC(peerID, QuestAckRpc, questId); }
+        catch (Exception ex) { Debug.LogError("[Valcoin] SendQuestAck failed: " + ex.Message); }
+    }
+
+    private static void HandleQuestAckOnClient(long _from, string questId)
+    {
+        try { QuestWatcher.OnAck(questId); }
+        catch (Exception ex) { Debug.LogError("[Valcoin] Quest ack handler failed: " + ex); }
     }
 }

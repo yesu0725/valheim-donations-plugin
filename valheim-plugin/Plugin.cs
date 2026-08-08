@@ -58,8 +58,18 @@ public class Plugin : BaseUnityPlugin
     {
         // Wait for ZNet so we know whether we're a server or a client first.
         while (ZNet.instance == null) yield return null;
-        bool serverSide = ZNet.instance.IsServer();
-        yield return RpcLayer.RegisterWhenReady(serverSide);
+
+        // A listen server (host) is BOTH: it answers client actions and it has a
+        // local player who needs the client-side replies. Registering only one
+        // side left a host unable to receive panel messages, the catalog, or —
+        // once quests landed — the quest ack, which would have left its own
+        // player re-reporting a completed quest forever. Only a dedicated server
+        // genuinely has no client half. The _registered* guards inside make the
+        // double call safe, and the two RPC name sets don't overlap.
+        if (ZNet.instance.IsServer())
+            yield return RpcLayer.RegisterWhenReady(serverSide: true);
+        if (!ZNet.instance.IsDedicated())
+            yield return RpcLayer.RegisterWhenReady(serverSide: false);
     }
 
     private void SpawnClientUiIfNotServer()

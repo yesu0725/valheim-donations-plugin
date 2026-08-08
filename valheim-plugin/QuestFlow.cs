@@ -37,22 +37,30 @@ public static class QuestFlow
     // shouting. Keyed by date rather than session so a relog doesn't re-nag.
     private static readonly Dictionary<string, string> _capToastDay = new Dictionary<string, string>();
 
-    public static void Run(string steam64, string playerName, string questId, Action<string> reply)
+    public static void Run(long senderPeerID, string steam64, string playerName, string questId, Action<string> reply)
     {
         if (string.IsNullOrEmpty(steam64))
         {
             Debug.LogWarning($"[Valcoin] quest '{questId}' reported by a peer with no resolvable Steam ID; ignoring.");
             return;
         }
-        if (!Config.Ready) return;
+        // No ack in either of the next two cases, deliberately. The client keeps
+        // its key and retries, so a backend that isn't configured yet — or a
+        // quest whose price hasn't been added — postpones the payout instead of
+        // burning it. The warning repeating each retry is the intended signal to
+        // the operator that something is misconfigured.
+        if (!Config.Ready)
+        {
+            Debug.LogWarning($"[Valcoin] quest '{questId}' reported by {playerName} but the backend "
+                             + "isn't configured; not acknowledging (client will retry).");
+            return;
+        }
 
         var quest = QuestCatalog.Get(questId);
         if (quest == null)
         {
-            // Either a stale ServerGuide YAML naming a quest this server doesn't
-            // price, or a hand-crafted RPC. Both are a no-op — an unpriced quest
-            // can't pay anything.
-            Debug.LogWarning($"[Valcoin] Unknown quest '{questId}' reported by {playerName}; ignoring.");
+            Debug.LogWarning($"[Valcoin] Unknown quest '{questId}' reported by {playerName} — no price in "
+                             + "valcoin_quests.yaml. Not acknowledging (client will retry).");
             return;
         }
 
@@ -70,14 +78,16 @@ public static class QuestFlow
             {
                 if (!ok || r == null)
                 {
-                    // Not surfaced to the player: they completed the quest, the
-                    // key is already cleared, and a backend blip isn't something
-                    // they can act on. It is a real (if rare) lost payout, so it
-                    // is logged loudly enough to reconcile from.
+                    // No ack — the client keeps its key and retries, so a
+                    // backend blip delays the payout rather than eating it.
                     Debug.LogWarning($"[Valcoin] quest claim failed for {playerName} " +
-                                     $"({quest.Id}): {err ?? "unknown"}");
+                                     $"({quest.Id}): {err ?? "unknown"} — not acknowledging (client will retry).");
                     return;
                 }
+
+                // Definitive answer (credited / already claimed / capped): the
+                // key has done its job, so release the client to clear it.
+                RpcLayer.SendQuestAck(senderPeerID, quest.Id);
                 Announce(steam64, playerName, quest, r, reply);
             }));
     }
