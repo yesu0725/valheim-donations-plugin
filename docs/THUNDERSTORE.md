@@ -35,7 +35,9 @@ clients fetch them at runtime.
    - `Thunderstore files/Valheim_Donations/manifest.json` → `version_number`
    - (Optionally also update `docs/STATUS.md`'s plugin version line.)
 2. Rebuild: `cd valheim-plugin; dotnet build -c Release`
-3. Deploy to client + server as usual (`deploy.ps1` — see [PLUGIN.md](PLUGIN.md)).
+3. Deploy to the **test profile** to verify in-game (`deploy.ps1` — see
+   [PLUGIN.md](PLUGIN.md)). It no longer touches the played profile or the
+   dedicated server; promote there manually once the build is verified.
 4. Copy the fresh DLL into the package folder:
    ```powershell
    Copy-Item valheim-plugin\bin\Release\ValheimDonationSystem.dll `

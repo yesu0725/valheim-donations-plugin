@@ -144,6 +144,37 @@ simpler and more generous.
 
 ---
 
+---
+
+## Quest rewards — ✅ built (plugin 5.18.0 / backend 0.7.0)
+
+The first ecosystem hook that actually *pays*: ServerGuide quests that earn
+Valcoins, using BiomeLords and Lost Scrolls II as content. Full design and
+mechanism in [../CHANGELOG.md](../CHANGELOG.md); player-facing summary and the
+quest table in [../SHOP.md](../SHOP.md#earning-valcoins-by-playing-serverguide-quests).
+
+How it fits the guardrails at the top of this doc:
+
+- **Rule 1 (never sell power) is untouched** — quests give *currency*, and the
+  currency still only buys what it always bought: cosmetics, titles, and
+  weekly-capped consumables. No new purchasable power.
+- **Rule 4 (reuse ServerGuide) taken literally** — ServerGuide is not modified.
+  Quests signal completion with its stock `set_player_key` reward, which the
+  donation plugin watches for. All new code is on the donations side.
+- **Rule 3 (promote at moments of joy)** — the onboarding quest ends at Haldor
+  explaining the patrons in-lore, and Lord kills are already the server's
+  marquee moments.
+- **The earn rate is deliberately small** — 8 coins/day against 50 for a $1
+  donation, and quest coins are excluded from the Top Patrons board. The point
+  is a daily-login habit and an on-ramp to understanding Valcoins, not an
+  alternative to donating.
+
+This supersedes nothing below — the Haldor conversation listed in the "first
+slice" is now built as part of the welcome quest rather than as a standalone
+promo entry.
+
+---
+
 ## Recommended first slice (highest value, lowest risk)
 
 1. **Exclusive Donation Codex (F4) + Top Patrons board** — the single home for

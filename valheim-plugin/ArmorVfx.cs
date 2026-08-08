@@ -467,6 +467,203 @@ internal static class ArmorVfxTooltipPatch
     }
 }
 
+// Carry a familiar across an armor UPGRADE. A familiar lives on the item
+// INSTANCE (m_customData["vc_armor_vfx"]) — but upgrading at a forge doesn't
+// mutate the piece in place. InventoryGui.DoCrafting records the old piece's
+// grid slot, UNEQUIPS + REMOVES it, then AddItem() mints a brand-new ItemData
+// in that slot with an EMPTY m_customData (equip flag not carried either). The
+// aura rode on the discarded instance, so the familiar vanished on every
+// upgrade. Fix: remember the aura + slot before the craft, and re-stamp the
+// freshly minted piece afterward (the same carry enchantment mods do here).
+//
+// Prepare()-guarded so a Valheim build without this exact method just skips the
+// patch (familiars still work; only upgrade-carry is lost) instead of aborting
+// the whole PatchAll.
+[HarmonyPatch]
+internal static class ArmorVfxUpgradePatch
+{
+    private static MethodBase _target;
+    private static FieldInfo _fUpgradeItem, _fGridPos, _fGridX, _fGridY;
+
+    private static bool Prepare()
+    {
+        _target = AccessTools.Method(typeof(InventoryGui), "DoCrafting", new[] { typeof(Player) });
+        _fUpgradeItem = AccessTools.Field(typeof(InventoryGui), "m_craftUpgradeItem");
+        _fGridPos = AccessTools.Field(typeof(ItemDrop.ItemData), "m_gridPos");
+        // Read the Vector2i's x/y by reflection so this plugin never has to
+        // reference assembly_utils (where Vector2i lives) at compile time.
+        var v2i = _fGridPos?.FieldType;
+        _fGridX = v2i != null ? AccessTools.Field(v2i, "x") : null;
+        _fGridY = v2i != null ? AccessTools.Field(v2i, "y") : null;
+        if (_target == null || _fUpgradeItem == null || _fGridX == null || _fGridY == null)
+            Debug.LogWarning("[Valcoin][ArmorVfx] DoCrafting/grid fields not found — familiar upgrade-carry disabled.");
+        return _target != null && _fUpgradeItem != null && _fGridX != null && _fGridY != null;
+    }
+
+    private static MethodBase TargetMethod() => _target;
+
+    // Carried Prefix -> Postfix: which aura, where the upgraded piece will
+    // re-materialize, what it should look like, and whether it was worn.
+    internal sealed class Carry
+    {
+        public string Aura, Name;
+        public int X, Y, NextQuality;
+        public bool WasEquipped;
+    }
+
+    private static void Prefix(InventoryGui __instance, Player player, out Carry __state)
+    {
+        __state = null;
+        try
+        {
+            var upItem = _fUpgradeItem.GetValue(__instance) as ItemDrop.ItemData;
+            if (upItem?.m_customData == null || upItem.m_shared == null) return;
+            if (!upItem.m_customData.TryGetValue(ArmorVfx.ItemKey, out var aura)) return;
+            if (!ArmorVfx.Registry.ContainsKey(aura)) return;
+            var gp = _fGridPos.GetValue(upItem);   // boxed Vector2i
+            __state = new Carry
+            {
+                Aura = aura,
+                Name = upItem.m_shared.m_name,
+                X = (int)_fGridX.GetValue(gp),
+                Y = (int)_fGridY.GetValue(gp),
+                NextQuality = upItem.m_quality + 1,
+                // DoCrafting unequips the old piece and the replacement is minted
+                // UNequipped, so remember this to put the helmet back on.
+                WasEquipped = player != null && player.IsItemEquiped(upItem),
+            };
+        }
+        catch { /* never block a craft */ }
+    }
+
+    private static void Postfix(Player player, Carry __state)
+    {
+        if (__state == null || player == null) return;
+        try
+        {
+            var inv = player.GetInventory();
+            if (inv == null) return;
+
+            // The replacement lands in the slot the old piece vacated. Match the
+            // shared name + new quality so a failed craft (the ORIGINAL, still
+            // stamped, still at the old quality) is never mistaken for it.
+            var it = inv.GetItemAt(__state.X, __state.Y);
+            if (!IsUpgraded(it, __state))
+            {
+                it = null;
+                // Slot moved out from under us — find the freshly minted piece by
+                // shape instead: right name, right quality, no aura yet.
+                foreach (var cand in inv.GetAllItems())
+                    if (IsUpgraded(cand, __state)) { it = cand; break; }
+            }
+            if (it == null) return;
+
+            if (it.m_customData == null) it.m_customData = new Dictionary<string, string>();
+            it.m_customData[ArmorVfx.ItemKey] = __state.Aura;
+            Debug.Log($"[Valcoin][ArmorVfx] Carried '{__state.Aura}' across upgrade to quality {__state.NextQuality}.");
+
+            // Put the piece back on if it was being worn. Vanilla drops it into
+            // the inventory unequipped; without this the familiar stays gone
+            // until the player manually re-equips. EquipItem no-ops when the
+            // item is already equipped, so this is safe either way.
+            if (__state.WasEquipped && !player.IsItemEquiped(it))
+                player.EquipItem(it, triggerEquipEffects: false);
+
+            // Reflect immediately so the familiar re-shows on the next render
+            // tick without waiting for an equip event.
+            ArmorVfx.MirrorLocalToZdo();
+        }
+        catch (Exception ex) { Debug.LogWarning($"[Valcoin][ArmorVfx] upgrade carry: {ex.Message}"); }
+    }
+
+    // The freshly minted upgrade: same item, one quality higher, not yet stamped.
+    private static bool IsUpgraded(ItemDrop.ItemData it, Carry st)
+        => it != null && it.m_shared != null
+           && it.m_shared.m_name == st.Name
+           && it.m_quality == st.NextQuality
+           && (it.m_customData == null || !it.m_customData.ContainsKey(ArmorVfx.ItemKey));
+}
+
+// Show the familiar on the crafting panel's UPGRADE view, so it's obvious the
+// piece about to be upgraded carries one. The panel can't show it on its own:
+// the description is built from the RECIPE PREFAB's ItemData
+// (ItemDrop.ItemData.GetTooltip(m_selectedRecipe.Recipe.m_item.m_itemData, ...)),
+// which has no m_customData — so the GetTooltip postfix that renames the item
+// everywhere else never fires here. This reads the PLAYER's actual selected
+// piece (m_selectedRecipe.ItemData) and decorates the panel from that.
+//
+// UpdateRecipe reassigns both labels from scratch every frame, so prepending
+// here can't accumulate; a marker check guards against it anyway.
+[HarmonyPatch]
+internal static class ArmorVfxUpgradePanelPatch
+{
+    private static MethodBase _target;
+    private static FieldInfo _fSelected, _fDesc, _fCraftType;
+    private static PropertyInfo _pItemData, _pText;
+    private const string Marker = "​";   // zero-width space: "already decorated"
+
+    private static bool Prepare()
+    {
+        _target = AccessTools.Method(typeof(InventoryGui), "UpdateRecipe",
+            new[] { typeof(Player), typeof(float) });
+        _fSelected  = AccessTools.Field(typeof(InventoryGui), "m_selectedRecipe");
+        _fDesc      = AccessTools.Field(typeof(InventoryGui), "m_recipeDecription");
+        _fCraftType = AccessTools.Field(typeof(InventoryGui), "m_itemCraftType");
+        // RecipeDataPair is a private struct; TMP_Text lives in an assembly this
+        // plugin doesn't reference — reach both by reflection.
+        _pItemData = _fSelected != null ? AccessTools.Property(_fSelected.FieldType, "ItemData") : null;
+        _pText     = _fDesc != null ? AccessTools.Property(_fDesc.FieldType, "text") : null;
+        bool ok = _target != null && _pItemData != null && _pText != null && _fCraftType != null;
+        if (!ok) Debug.LogWarning("[Valcoin][ArmorVfx] UpdateRecipe/labels not found — upgrade-panel familiar line disabled.");
+        return ok;
+    }
+
+    private static MethodBase TargetMethod() => _target;
+
+    private static void Postfix(InventoryGui __instance)
+    {
+        try
+        {
+            var sel = _fSelected.GetValue(__instance);          // boxed RecipeDataPair
+            if (sel == null) return;
+            var item = _pItemData.GetValue(sel) as ItemDrop.ItemData;   // null on a NEW craft
+            if (item?.m_customData == null || item.m_shared == null) return;
+            if (!item.m_customData.TryGetValue(ArmorVfx.ItemKey, out var id)) return;
+            if (!ArmorVfx.Registry.TryGetValue(id, out var def)) return;
+
+            string baseName = ArmorVfx.LocalizeName(item.m_shared.m_name);
+            string stats = ArmorVfx.StatsText(def);
+
+            // "Bronze Helmet of the Bat" above the description, plus what the
+            // familiar is and what it grants — matching the tooltip's gold.
+            var desc = _fDesc.GetValue(__instance);
+            if (desc != null)
+            {
+                var cur = _pText.GetValue(desc) as string ?? "";
+                if (cur.IndexOf(Marker, StringComparison.Ordinal) < 0)
+                {
+                    string line = $"{Marker}<color=#E8C877>{baseName} {def.Suffix}</color>\n"
+                                + $"<color=#9BE8B4>Familiar: {def.Display}</color>"
+                                + (string.IsNullOrEmpty(stats) ? "" : $" <color=#9BE8B4>({stats})</color>")
+                                + "\n<color=#8C8C8C>Kept when this piece is upgraded.</color>\n\n";
+                    _pText.SetValue(desc, line + cur);
+                }
+            }
+
+            // The "Upgrade <name> to level N" header names the piece too — show
+            // the familiar name there so it reads right next to the level.
+            var ct = _fCraftType.GetValue(__instance);
+            if (ct != null)
+            {
+                var cur = _pText.GetValue(ct) as string ?? "";
+                if (cur.IndexOf(Marker, StringComparison.Ordinal) < 0 && cur.IndexOf(baseName, StringComparison.Ordinal) >= 0)
+                    _pText.SetValue(ct, Marker + cur.Replace(baseName, $"{baseName} <color=#E8C877>{def.Suffix}</color>"));
+            }
+        }
+        catch { /* never break the crafting panel */ }
+    }
+}
+
 // Client-side driver: mirrors the local player's auras to ZDO and renders every
 // visible player's auras (self + others). One cheap throttled loop.
 public class ArmorVfxManager : MonoBehaviour

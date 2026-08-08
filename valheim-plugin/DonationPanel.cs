@@ -37,6 +37,8 @@ public class DonationPanel : MonoBehaviour
 
     // Cached per-player state.
     private int _balance;
+    private int _questEarned, _questCap, _questStreak;
+    private string _questResetsIn = "";
     private List<TopEntry> _topDonors = new List<TopEntry>();
 
     // Shop state fetched from the backend (the client can't read server-side
@@ -170,6 +172,10 @@ public class DonationPanel : MonoBehaviour
         public string week_resets_in;
         public Dictionary<string, int> charges;
         public float coins_per_usd;
+        public int    quest_daily_earned;
+        public int    quest_daily_cap;
+        public string quest_resets_in;
+        public int    quest_streak;
     }
 
     private class TopEntry
@@ -206,6 +212,10 @@ public class DonationPanel : MonoBehaviour
                 _weekResetsIn = r.week_resets_in ?? "";
                 _charges = r.charges ?? new Dictionary<string, int>();
                 _coinsPerUsd = r.coins_per_usd;
+                _questEarned = r.quest_daily_earned;
+                _questCap = r.quest_daily_cap;
+                _questResetsIn = r.quest_resets_in ?? "";
+                _questStreak = r.quest_streak;
                 _charges.TryGetValue(SoulkeeperState.Kind, out var sk);
                 SoulkeeperState.UpdateFromState(steam64, sk);
             });
@@ -517,6 +527,7 @@ public class DonationPanel : MonoBehaviour
 
         GUILayout.Label($"Balance:  {_balance} Valcoins", _label);
         DrawOwnedCharges();
+        DrawQuestProgress();
         if (!_online)
             GUILayout.Label(Config.Ready
                 ? "Can't reach the donation service right now - you can still browse; it reconnects automatically."
@@ -612,6 +623,24 @@ public class DonationPanel : MonoBehaviour
             GUILayout.Space(10);
         }
         if (any) { GUILayout.FlexibleSpace(); GUILayout.EndHorizontal(); }
+    }
+
+    // Daily-quest status, shown under the balance on every tab. This is the
+    // surface a player checks *before* asking "why didn't that quest pay?" —
+    // the in-the-moment messages QuestFlow sends are deliberately quiet, so
+    // something has to answer the question passively.
+    private void DrawQuestProgress()
+    {
+        if (_questCap <= 0) return;   // quests disabled server-side
+
+        var line = $"Daily quests: {_questEarned}/{_questCap}";
+        if (!string.IsNullOrEmpty(_questResetsIn)) line += $"  ·  resets in {_questResetsIn}";
+        if (_questStreak > 0) line += $"  ·  {_questStreak}-day streak";
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Label(line, _questEarned >= _questCap ? _pillOn : _sub, GUILayout.ExpandWidth(false));
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
     }
 
     private static readonly Regex TierSuffix = new Regex(@"\s*\(x\d+\)\s*$");

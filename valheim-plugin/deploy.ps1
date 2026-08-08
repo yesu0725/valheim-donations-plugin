@@ -1,9 +1,8 @@
-# Build the plugin and deploy the DLL to all destinations (two client
-# r2modman profiles + the dedicated server).
+# Build the plugin and deploy the DLL to the TEST r2modman profile ONLY.
 # Deploys into a Thunderstore-manager-style subfolder
 # (BepInEx/plugins/TaegukGaming-Valheim_Donations/), matching how every other
-# mod on these profiles/server is organized and how the Thunderstore package
-# itself unpacks — not a flat file directly in BepInEx/plugins.
+# mod on this profile is organized and how the Thunderstore package itself
+# unpacks — not a flat file directly in BepInEx/plugins.
 #
 # Usage:  pwsh ./deploy.ps1        (from valheim-plugin/)
 #         pwsh ./deploy.ps1 -NoBuild   (skip build, just copy the existing DLL)
@@ -13,22 +12,19 @@ $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dll  = Join-Path $here 'bin\Release\ValheimDonationSystem.dll'
 
-# Destinations, kept in lockstep:
-#   "Hearthbound Server"        - the LIVE profile actually launched/played
-#                                 (was briefly the typo'd "Heathbound Server";
-#                                  an even older "Hearthbound Valheim" entry here
-#                                  pointed at a profile that never existed and
-#                                  silently SKIP'd, which is how the played
-#                                  profile went un-updated - see docs/OPERATIONS.md).
-#   "Hearthbound Valheim - Test" - the testing profile.
-#   dedicated server            - the headless server.
-# Any missing folder is skipped, so this is safe if one isn't on a given machine
-# -- but a SKIP on the profile you actually play means a STALE plugin. If you
-# rename a profile in r2modman, update the matching path here too.
+# THE ONLY DEPLOY DESTINATION - the "Hearthbound Valheim - Test" r2modman
+# profile (owner's instruction, 2026-08-07: deploy here and DO NOT TOUCH any
+# other profile).
+#
+# Deliberately NOT deployed to any more, leave these alone:
+#   - the live/played client profile (currently "HB Server", previously
+#     "Hearthbound Server" / "Hearthbound Valheim" - it keeps getting renamed)
+#   - the dedicated server
+#     (C:\Program Files (x86)\Steam\steamapps\common\Valheim dedicated server)
+# Promoting a tested build to those is a manual, deliberate step now - not
+# something a routine build should do behind your back.
 $pluginFolders = @(
-  'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Server\BepInEx\plugins',
-  'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Valheim - Test\BepInEx\plugins',
-  'C:\Program Files (x86)\Steam\steamapps\common\Valheim dedicated server\BepInEx\plugins'
+  'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Valheim - Test\BepInEx\plugins'
 )
 $subfolderName = 'TaegukGaming-Valheim_Donations'
 
@@ -41,7 +37,16 @@ if (-not $NoBuild) {
 if (-not (Test-Path $dll)) { throw "DLL not found: $dll" }
 
 foreach ($pluginFolder in $pluginFolders) {
-  if (-not (Test-Path $pluginFolder)) { Write-Host "SKIP (missing folder): $pluginFolder" -ForegroundColor Yellow; continue }
+  # Hard failure, never a silent skip. This used to warn-and-continue, which is
+  # exactly how a renamed r2modman profile left the target on a weeks-old DLL
+  # while the deploy still looked green - twice, costing whole debugging
+  # sessions chasing "fixes that don't work". With a single destination a skip
+  # means NOTHING was deployed, so it must be loud. If the profile was renamed,
+  # update the path above.
+  if (-not (Test-Path $pluginFolder)) {
+    throw "Deploy target missing: $pluginFolder`n" +
+          "  Was the r2modman profile renamed? Fix the path in deploy.ps1 - nothing was deployed."
+  }
 
   # Clean up a stray flat copy from older deploy.ps1 versions — leaving both
   # would load the plugin twice (duplicate BepInPlugin GUID).

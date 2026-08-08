@@ -8,7 +8,7 @@ client-side to use the donation system at all.
 
 ## Layout
 
-- [Plugin.cs](../valheim-plugin/Plugin.cs) — BepInEx entry, admin YAML, Harmony patch (current version **5.16.0**)
+- [Plugin.cs](../valheim-plugin/Plugin.cs) — BepInEx entry, admin YAML, Harmony patch (current version **5.17.0**)
 - [GrantPoller.cs](../valheim-plugin/GrantPoller.cs) — polls `/api/grants/pending`
 - [CatalogSync.cs](../valheim-plugin/CatalogSync.cs) — broadcasts the shop catalog to remote clients over RPC
 - [CoinManager.cs](../valheim-plugin/CoinManager.cs) — balance cache + applied-grant dedupe
@@ -34,7 +34,13 @@ client-side to use the donation system at all.
   creatures animate instead of freezing. Each familiar also grants **feather fall** (the Feather
   Cape's own `SlowFall` effect — non-stacking) and a **small flat attack bonus** matched to the
   creature (`SE_FamiliarBond`, hooking the game's `ModifyAttack`) while its helmet is equipped.
-  Broadcast on the player's ZDO so other clients render it (`ArmorVfxManager`). Full table in
+  Broadcast on the player's ZDO so other clients render it (`ArmorVfxManager`). Two further
+  `Prepare()`-guarded patches (5.17.0) handle **armor upgrades**, which mint a *replacement*
+  `ItemData` rather than editing the piece in place:
+  `ArmorVfxUpgradePatch` (`InventoryGui.DoCrafting`) carries the aura onto the new piece and
+  re-equips it, and `ArmorVfxUpgradePanelPatch` (`InventoryGui.UpdateRecipe`) shows the familiar
+  on the Upgrade view — needed because that panel describes the **recipe prefab**, not the
+  player's item, so the `GetTooltip` rename never reaches it. Full table in
   [SHOP.md](SHOP.md)
 - [LocalIdentity.cs](../valheim-plugin/LocalIdentity.cs) — `Steam64()` resolver extracted so the
   pollers can resolve the local id without the panel

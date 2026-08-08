@@ -10,7 +10,7 @@ using HarmonyLib;
 // inherited BaseUnityPlugin.Config (a BepInEx ConfigFile) property.
 using PluginConfig = Config;
 
-[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.16.0")]
+[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.18.0")]
 public class Plugin : BaseUnityPlugin
 {
     public static HashSet<string> AdminSteamIDs = new HashSet<string>();
@@ -28,6 +28,7 @@ public class Plugin : BaseUnityPlugin
         CoinManager.Load();
         PerkManager.Load();
         Catalog.Load();
+        QuestCatalog.Load();
 
         // GrantPoller drives itself; only useful on dedicated/host servers.
         var go = new GameObject("ValcoinGrantPoller");
@@ -92,6 +93,13 @@ public class Plugin : BaseUnityPlugin
         var av = new GameObject("ValcoinArmorVfxManager");
         av.AddComponent<ArmorVfxManager>();
         DontDestroyOnLoad(av);
+
+        // Watches for the "VC.Q.*" player keys ServerGuide quests set on
+        // completion. Client-side only: quest state lives on the character, so
+        // the dedicated server never sees these keys itself.
+        var qw = new GameObject("ValcoinQuestWatcher");
+        qw.AddComponent<QuestWatcher>();
+        DontDestroyOnLoad(qw);
     }
 
     // --- Admin YAML --------------------------------------------------------

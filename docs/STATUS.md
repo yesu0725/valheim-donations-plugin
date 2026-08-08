@@ -11,7 +11,13 @@ plugin↔backend compatibility matrix.
   Shop now ships a **Soulkeeper Charm** consumable (backend charge ledger +
   in-game skill-save + Valkyrie tombstone carry); cosmetic badge/title/flair
   perks were dropped.
-- **Backend version:** `0.6.0` (see [main.py](../backend/app/main.py)).
+- **Backend version:** `0.7.0` (see [main.py](../backend/app/main.py)) —
+  **NOT YET DEPLOYED.** 0.7.0 adds ServerGuide quest rewards
+  (`POST /api/quests/claim`, `quest_claims` table, `quest_daily_*` on
+  `/api/state`, `POST /api/admin/quest-reset`). The live service is still 0.6.0,
+  so **every quest completion will 404 and pay nothing until it's deployed** —
+  deploy the backend *before* the plugin. Tests: 84 passing locally.
+- **Previously deployed backend:** `0.6.0`.
   **Deployed and reachable at `https://valheim-donations.fly.dev`** — redeployed
   2026-07-19 adding **`coins_per_usd` to `/api/state`** (from
   `settings.coins_per_unit["USD"]`, currently **50**) so the in-game panel can
@@ -22,13 +28,28 @@ plugin↔backend compatibility matrix.
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.16.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
-  Deployed via `deploy.ps1` to all three real destinations: the played profile
-  **`Hearthbound Server`**, the `Hearthbound Valheim - Test` profile, and the
-  dedicated server. (The played profile was renamed 2026-07-20 from the typo'd
-  `Heathbound Server`, and `deploy.ps1`'s dead `Hearthbound Valheim` entry was
-  repointed at it — see Known discrepancies for the Offline incident this
-  resolved.) **Restart the server + client to load 5.16.0.**
+- **Plugin version:** `5.18.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+  **5.18.0** adds **ServerGuide quest rewards** — a one-time "Patron's Welcome"
+  worth 30 Valcoins and a daily pool capped at 8/day, with a 7-day streak bonus.
+  ServerGuide is **unmodified**: quests set a `VC.Q.*` player key via its stock
+  `set_player_key` reward, `QuestWatcher` reports it, and the backend decides
+  whether it pays. Needs backend **≥ 0.7.0** (see above — not deployed yet).
+  Quest content lives in
+  [`examples/guidance.valcoin-quests.yaml`](../valheim-plugin/examples/guidance.valcoin-quests.yaml),
+  which must be copied to the server's `BepInEx/config/ValheimServerGuide/`.
+  **Not yet built to a profile or tested in-game.**
+  **5.17.0** makes **Familiars survive an armor upgrade** (the aura lives on the
+  item instance, and Valheim's upgrade path mints a *new* `ItemData` — it is now
+  carried across, and the piece is re-equipped so the familiar comes straight
+  back) and **shows the familiar on the crafting panel's Upgrade view** before
+  you spend the materials. Verified in-game 2026-08-07. Backend unchanged.
+  **As of 2026-08-07 `deploy.ps1` deploys to ONE destination only — the
+  `Hearthbound Valheim - Test` r2modman profile.** The played profile
+  (renamed again, now **`HB Server`**) and the dedicated server are no longer
+  deploy targets; promoting a tested build to them is a deliberate manual step.
+  A missing target folder now **throws** instead of printing `SKIP` — see
+  [OPERATIONS.md](OPERATIONS.md) for the two debugging sessions the silent-skip
+  behaviour cost. **Restart the client to load a freshly deployed DLL.**
   **5.16.0** adds **shop preview images** (optional `preview_image` per SKU —
   `https` URL or a path relative to `BepInEx/config`; loaded async and cached by
   [ImageCache.cs](../valheim-plugin/ImageCache.cs)), a **click-to-enlarge zoom

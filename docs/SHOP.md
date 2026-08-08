@@ -263,8 +263,24 @@ gets an `__ARMORVFX__:<aura>:head` control message and applies it locally
 
 - **Source of truth = the item.** The aura is stamped on the equipped item via
   `ItemData.m_customData["vc_armor_vfx"]`, so it persists across relogs and
-  drives the rename (a `GetHoverName` postfix appends the suffix — per-instance,
-  so only the enchanted piece renames). Requires that piece to be equipped.
+  drives the rename (a `GetTooltip` postfix prepends the suffixed name —
+  per-instance, so only the enchanted piece renames). Requires that piece to be
+  equipped.
+- **Survives upgrades (5.17.0).** Upgrading the helmet at a forge keeps the
+  familiar. This needs explicit handling: Valheim doesn't upgrade a piece in
+  place — `InventoryGui.DoCrafting` unequips and removes the old item, then
+  mints a **new `ItemData`** in the same grid slot, copying neither
+  `m_customData` nor `m_equipped`. `ArmorVfxUpgradePatch` re-stamps the
+  replacement (matched by shared name + expected quality, so an aborted craft
+  can't be mis-stamped) and re-equips it, since vanilla otherwise leaves the
+  upgraded piece sitting unequipped in the inventory.
+- **The Upgrade view names the familiar (5.17.0).** Selecting a familiar-bearing
+  piece in the crafting panel shows *"Bronze Helmet of the Bat"*, the familiar
+  and its attack bonus, and a *"Kept when this piece is upgraded."* note — so
+  it's obvious before the materials are spent. The panel builds its description
+  from the **recipe prefab**, which carries no `m_customData`, so the normal
+  rename never reaches it; `ArmorVfxUpgradePanelPatch` reads the player's actual
+  selected piece instead.
 - **Others see it too.** The local player mirrors "aura per equipped slot" onto
   their own **Player ZDO** (`vc_vfx_head/chest/legs`), which replicates to every
   client. `ArmorVfxManager` (client-only, ~0.75 s tick) reads every visible
@@ -318,6 +334,60 @@ already generated the old 3-SKU `valcoin_shop.yaml` will NOT auto-overwrite it**
 restart to promote the catalog on an existing server. Adding or editing a SKU is
 just a YAML edit + restart.
 
+## Earning Valcoins by playing (ServerGuide quests)
+
+Coins normally arrive by donating. Quests are the other tap: a **one-time
+"Patron's Welcome"** worth **30 Valcoins** that teaches the donation system, and
+a **daily pool capped at 8/day** with a 7-day streak bonus (+20), so there's a
+reason to log in.
+
+**ServerGuide is not modified.** It has no currency reward type, so each quest
+sets a player key `VC.Q.<id>` using its stock `set_player_key` reward; the
+plugin watches for the key and the backend decides whether it pays.
+
+Two config files, and they must agree:
+
+| File | Lives in | Holds |
+|---|---|---|
+| `guidance.valcoin-quests.yaml` | server's `BepInEx/config/ValheimServerGuide/` | the quests — triggers, text, and the `VC.Q.<id>` key each sets |
+| `valcoin_quests.yaml` | server's `BepInEx/config/` | what each `<id>` is worth (`coins`, `period: once\|daily`) |
+
+A key with no matching entry in `valcoin_quests.yaml` is worth nothing and logs
+`Unknown quest '<id>'`. Drafts of both ship in
+[../valheim-plugin/examples/guidance.valcoin-quests.yaml](../valheim-plugin/examples/guidance.valcoin-quests.yaml)
+and as the self-written template in
+[../valheim-plugin/QuestCatalog.cs](../valheim-plugin/QuestCatalog.cs).
+
+**The daily pool sums to 20 against a cap of 8 — on purpose.** Nobody clears it;
+you do what suits the session. Felling a Biome Lord (8) caps you on its own.
+
+| Quest | Trigger | Coins |
+|---|---|---|
+| Answer the Horn — be online ~15 min | `timed` | 2 |
+| Thin the Wilds — kill 15 common creatures | `kill`, `count: 15` (7 tier variants) | 3 |
+| Tend the Beasts — tame anything | `tamed_creature` | 2 |
+| Fell a Lord — kill any Biome Lord | `kill` (7 Lord prefabs) | 8 |
+| Forge a Bond — recruit/level/duel a Dvergr | Lost Scrolls II triggers | 5 |
+
+Balance notes, and why this doesn't undercut donating:
+
+- **Quest coins never touch the Patron board.** They're granted with
+  `source = 'quest'`; the leaderboard sums `source = 'donation'` only.
+- **The cap is the throttle.** 8/day is ~56/week — roughly one 100-coin
+  consumable every week and a half, against 50 coins for a $1 donation.
+- **Reset is 00:00 UTC**, matching ServerGuide's own `real_world_time` /
+  `day_of_week` triggers and SQLite's `datetime('now')`.
+- **Nothing banks.** A quest finished at the cap pays nothing and doesn't queue
+  for tomorrow.
+
+Players check their standing on the F4 panel, under the balance: *"Daily quests:
+5/8 · resets in 6h 12m · 4-day streak"*.
+
+**Never promise coins in the ServerGuide text.** A daily's display fires on every
+completion, but only the first each day pays, and nothing pays past the cap.
+Let the quest text describe what happened in-world and leave coins to the plugin —
+it's the only half that knows what was actually paid.
+
 ## Advertising the donation system
 
 Defaults-light advertising kit — the goal is to make the donation flow
@@ -351,3 +421,8 @@ See [ecosystem/donation-hooks.md](ecosystem/donation-hooks.md) for the full plan
 - [valheim-plugin/DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — the single combined panel (F4)
 - [valheim-plugin/ChatDecoration.cs](../valheim-plugin/ChatDecoration.cs) — passive badge/title chat prefix (not a command)
 - [valheim-plugin/examples/valcoin_shop.example.yaml](../valheim-plugin/examples/valcoin_shop.example.yaml) — proposed catalog
+- [valheim-plugin/QuestCatalog.cs](../valheim-plugin/QuestCatalog.cs) — quest id → coins/period loader (`valcoin_quests.yaml`)
+- [valheim-plugin/QuestWatcher.cs](../valheim-plugin/QuestWatcher.cs) — client-side `VC.Q.*` key poll
+- [valheim-plugin/QuestFlow.cs](../valheim-plugin/QuestFlow.cs) — server-side claim + player messaging
+- [backend/app/routes/quests.py](../backend/app/routes/quests.py) — `/api/quests/claim`, the only real payout gate
+- [valheim-plugin/examples/guidance.valcoin-quests.yaml](../valheim-plugin/examples/guidance.valcoin-quests.yaml) — the quests themselves (ServerGuide YAML)

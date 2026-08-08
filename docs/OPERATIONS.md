@@ -92,9 +92,21 @@ edit.
 > **Gotcha:** a profile name typo (`Heathbound` vs `Hearthbound`) is exactly how
 > a profile slips past `deploy.ps1`'s target list. If you play from a profile
 > the script doesn't list, every rebuild silently leaves it on an old DLL and
-> its config untouched. Add the profile to the script (see below) or rename it
-> to match. `deploy.ps1` tolerates missing folders, so a stale/renamed entry
-> just prints `SKIP (missing folder)` rather than erroring — easy to miss.
+> its config untouched.
+>
+> **Changed 2026-08-07 — this class of failure is now fatal, not silent.**
+> `deploy.ps1` deploys to **one** destination, the test profile
+> (`Hearthbound Valheim - Test`), and **throws** if that folder is missing
+> instead of printing `SKIP (missing folder)` and continuing. The live/played
+> profile and the dedicated server are deliberately **not** deploy targets any
+> more — promoting a tested build to them is a manual step. The old
+> warn-and-continue behaviour cost two debugging sessions: the played profile
+> was renamed (`Hearthbound Valheim` → `Hearthbound Server` → `HB Server`),
+> the deploy kept reporting success, and a plugin fix was twice judged "broken"
+> when the profile under test was simply running a weeks-old DLL.
+>
+> **Before concluding a code fix didn't work in-game,** compare the deployed
+> DLL's timestamp and size against `valheim-plugin/bin/Release/ValheimDonationSystem.dll`.
 
 ## Verifying a change end-to-end
 

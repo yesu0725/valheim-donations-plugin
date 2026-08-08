@@ -21,6 +21,7 @@ public static class RpcLayer
     public const string ActionRpc  = "vc_action";
     public const string PanelRpc   = "vc_panel";
     public const string CatalogRpc = "vc_catalog";
+    public const string QuestsRpc  = "vc_quests";
 
     private static bool _registeredServer;
     private static bool _registeredClient;
@@ -42,8 +43,9 @@ public static class RpcLayer
         {
             ZRoutedRpc.instance.Register<string>(PanelRpc, HandlePanelOnClient);
             ZRoutedRpc.instance.Register<string>(CatalogRpc, HandleCatalogOnClient);
+            ZRoutedRpc.instance.Register<string>(QuestsRpc, HandleQuestsOnClient);
             _registeredClient = true;
-            Debug.Log("[Valcoin] RPC registered (client): " + PanelRpc + ", " + CatalogRpc);
+            Debug.Log("[Valcoin] RPC registered (client): " + PanelRpc + ", " + CatalogRpc + ", " + QuestsRpc);
         }
     }
 
@@ -107,5 +109,25 @@ public static class RpcLayer
         if (ZNet.instance != null && ZNet.instance.IsServer()) return;
         try { Catalog.ApplyRemote(json); }
         catch (Exception ex) { Debug.LogError("[Valcoin] Catalog apply failed: " + ex); }
+    }
+
+    // ─── Server → client: quest list sync ──────────────────────────────────
+    //
+    // Tells clients which "VC.Q.*" player keys QuestWatcher should watch for.
+    // valcoin_quests.yaml only exists on the server, so without this a remote
+    // client would never report a completed quest.
+
+    public static void BroadcastQuests(string json)
+    {
+        if (ZRoutedRpc.instance == null || string.IsNullOrEmpty(json)) return;
+        try { ZRoutedRpc.instance.InvokeRoutedRPC(ZRoutedRpc.Everybody, QuestsRpc, json); }
+        catch (Exception ex) { Debug.LogError("[Valcoin] BroadcastQuests failed: " + ex.Message); }
+    }
+
+    private static void HandleQuestsOnClient(long _from, string json)
+    {
+        if (ZNet.instance != null && ZNet.instance.IsServer()) return;
+        try { QuestCatalog.ApplyRemote(json); }
+        catch (Exception ex) { Debug.LogError("[Valcoin] Quest catalog apply failed: " + ex); }
     }
 }

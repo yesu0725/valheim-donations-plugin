@@ -5,6 +5,7 @@ using System.Linq;
 //
 // Action wire format is a colon-separated string:
 //   "donate"
+//   "quest:<questId>"                     — a ServerGuide quest just completed
 //   "buy:<sku>"
 //   "gift:<playerName>:<amount>"
 //   "title:<text>"
@@ -42,6 +43,7 @@ public static class UiActionRouter
         switch (key)
         {
             case "donate":       DonateFlow.Run(steam64, senderName, Reply); break;
+            case "quest":        QuestFlow.Run(steam64, senderName, rest.Trim(), Reply); break;
             case "buy":          DoBuy(steam64, rest, Reply); break;
             case "gift":         DoGift(steam64, senderName, rest, Reply); break;
             case "topdonors":    TopDonorsFetcher.Fetch(reply => Reply(reply)); break;

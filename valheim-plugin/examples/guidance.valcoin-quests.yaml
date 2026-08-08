@@ -1,0 +1,549 @@
+# ==========================================================================
+# Valcoin quests — ValheimServerGuide guidance
+#
+# Deploy to:  <server>/BepInEx/config/ValheimServerGuide/
+#             (ServerGuide auto-merges every *.yaml in that folder)
+#             …and the same folder on each client profile is NOT needed —
+#             the server owns the YAML and syncs it (CRIT-06).
+#
+# HOW THESE PAY OUT
+# -----------------
+# ServerGuide has no currency reward type. Each quest below instead sets a
+# player key "VC.Q.<id>" with the stock `set_player_key` reward. The donation
+# plugin's QuestWatcher spots that key, reports it, clears it (which is what
+# re-arms a daily), and the BACKEND decides whether the report is worth coins.
+#
+# TWO RULES FOR ANYONE EDITING THIS FILE
+# --------------------------------------
+# 1. NEVER PROMISE COINS IN THE TEXT BELOW. A daily's display fires every time
+#    it completes, but the backend only pays the first completion each UTC day
+#    and stops entirely at the per-day cap. "You earned 3 Valcoins!" would be a
+#    lie roughly half the time. Say what happened in-world; let the plugin talk
+#    about coins — it's the only half that knows what was actually paid.
+# 2. The key in `set_player_key` must exactly match an id in the plugin's
+#    valcoin_quests.yaml. A key with no matching entry there is silently worth
+#    nothing (the server logs "Unknown quest '<id>'").
+#
+# WHY NO `first_login` ANYWHERE IN THIS FILE
+# ------------------------------------------
+# `first_login`, `chest_opened` and `location_entered` each burn a one-shot
+# per-character dedup key the moment they first fire — which, for anyone who
+# has already played on this server or imported a local-seed character, was
+# months ago. They would silently never fire for exactly the established
+# players this content most needs to reach. Every trigger used below is one
+# that re-fires on ordinary play. (Lost Scrolls II hit the same trap and
+# documented it: see its ServerGuide-Integration.md, "distance, not
+# location_entered".)
+# ==========================================================================
+guidances:
+
+  # ======================================================================
+  # ONE-TIME: The Patron's Welcome (30 Valcoins)
+  # ----------------------------------------------------------------------
+  # Settle in -> cook -> go meet the trader. Deliberately built from things a
+  # veteran does without changing their routine and a newcomer reaches within
+  # the first session.
+  #
+  # SPLIT INTO TWO ENTRIES, NOT ONE THREE-STEP CHAIN. `GuidanceStep` carries
+  # only trigger/display/message/description/progress — it has no Conversation,
+  # HoverText or Rewards field, and the loader's IgnoreUnmatchedProperties()
+  # drops them silently rather than erroring. So the Haldor conversation has to
+  # be its own entry, gated with `requires`. That works because
+  # PrerequisiteChecker treats a COMPLETED CHAIN as satisfying `requires`
+  # (it checks ChainState.IsComplete before SeenTracker.HasFired).
+  # ======================================================================
+  - id: vc_welcome
+    title: "The Patron's Welcome"
+    category: Support
+    version: 1
+    once: true
+    scope: player
+    description: >-
+      Learn how this realm is kept alight, and claim the welcome gift set aside
+      for every newcomer.
+    summary: >-
+      Settled in, shared a meal, and was pointed toward the trader who keeps the
+      patrons' ledger.
+    steps:
+      # --- Step 1: any crafting station. Patches CraftingStation.Interact,
+      #     no dedup guard, so it lands for veterans and newcomers alike.
+      - trigger:
+          type: crafting_table_used
+        display:
+          mode: rune
+          topic: "The Patrons"
+        message: >-
+          Every hall in this realm stands on someone's shoulders. Some raised the
+          beams; others keep the doors open — the patrons, whose gifts pay for the
+          ground you build on. Their gratitude is kept in Valcoins, and you have a
+          share waiting. Press F4 to see the ledger. Warm yourself at a fire first,
+          then seek out the trader in the black woods; he knows the whole of it.
+        description: "Use any crafting station."
+
+      # --- Step 2: any fire or cooking station. Same shape, same reason.
+      - trigger:
+          type: cooking_used
+        display:
+          mode: raven
+          topic: "A Meal Shared"
+        message: >-
+          Good. A fire and a full pot are how a hall becomes a home. There is a
+          trader in the black woods — Haldor — who has kept accounts for longer
+          than most of us have drawn breath. Ask him of the patrons.
+        description: "Cook at any fire or cooking station."
+
+    # Entry-level rewards fire when the final step completes — which is exactly
+    # when the player is told to go find Haldor. `location_pin` resolves only if
+    # a trader camp has already generated near them; otherwise ServerGuide logs
+    # a warning and skips it. That graceful failure is the point: a free head
+    # start when it works, harmless when it doesn't.
+    rewards:
+      - type: location_pin
+        location: Vendor_BlackForest
+        pin_name: "Haldor"
+        icon: Icon3
+
+  # ---- The ask itself, and the payout --------------------------------------
+  # Uses the FLAT `choices:` list, not `nodes:`. Node-based conversations end
+  # through OnNodeConversationEnd, which marks the entry fired but never calls
+  # RewardDispatcher — only ChoiceSpec.Rewards is ever granted. A node tree here
+  # would look right and pay nothing.
+  #
+  # !! BOTH CHOICES CARRY THE REWARD, ON PURPOSE. Selecting ANY choice marks an
+  # `once: true` entry as fired. Adding a "Never mind" option without rewards
+  # would let a player burn their one-time 30 coins by tapping the wrong button.
+  # If you add a choice here, give it the same reward block.
+  - id: vc_welcome_haldor
+    title: "The Patron's Welcome"
+    category: Support
+    version: 1
+    once: true
+    scope: player
+    requires: [vc_welcome]
+    discord_on_complete: true
+    trigger:
+      type: npc_conversation
+      npc: Haldor
+    display:
+      mode: conversation
+      topic: "Haldor"
+    hover_text:
+      default: "[Hold E] Ask about the patrons"
+      after_fire: "[Hold E] Trade"
+    message: >-
+      Hah! You have the look of someone who was told to come ask me something.
+      The patrons, is it? Folk who keep this realm's doors open with coin from
+      their own world. I keep the ledger — Valcoins, we call their share. They
+      buy nothing that wins a fight for you: trinkets, a fine title, a feast you
+      could have cooked yourself given the time. Nothing more. Press F4 and the
+      ledger opens wherever you stand — no need to walk back to me. And here,
+      the welcome share set aside for every newcomer. Spend it on something
+      useless and beautiful.
+    description: "Find Haldor in the Black Forest and ask about the patrons."
+    summary: >-
+      Learned from Haldor how the patrons keep this realm alight, and claimed
+      the welcome share.
+    conversation:
+      choices:
+        - text: "Then I'll thank them properly."
+          rewards:
+            - type: set_player_key
+              key: VC.Q.vc_welcome
+        - text: "Useless and beautiful suits me."
+          rewards:
+            - type: set_player_key
+              key: VC.Q.vc_welcome
+
+  # ======================================================================
+  # DAILY: Answer the Horn — be online a while
+  # ----------------------------------------------------------------------
+  # `timed` is a single-entry-only trigger (it cannot be a chain step —
+  # TimedTrigger only scans top-level entry.Trigger), which suits it here.
+  # cooldown is in-memory, so this fires at most once per session; a relog can
+  # fire it again and the backend answers "already claimed today".
+  # ======================================================================
+  - id: vc_daily_horn
+    title: "Answer the Horn"
+    category: Support
+    version: 1
+    once: false
+    cooldown: 82800        # 23h — can't re-fire later in the same session
+    scope: player
+    trigger:
+      type: timed
+      id: vc_daily_horn_timer
+      interval: "900"      # seconds; raw float only — "15m" is NOT parsed
+    display:
+      mode: chat
+      text: "The hall notes your presence today."
+    description: "Simply be here. Spend a little time in the realm each day."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_horn
+
+  # ======================================================================
+  # DAILY: Thin the Wilds — kill 15 of a common creature
+  # ----------------------------------------------------------------------
+  # SEVEN entries, one per progression tier, ALL setting the same key.
+  # `trigger.creature` is a single exact prefab name with no wildcard, so a
+  # one-entry version would send an Ashlands player hunting Greylings.
+  # Whichever tier a player finishes first is the one that pays; the rest come
+  # back "already claimed today" and cost nothing.
+  #
+  # The kill counter (VSG.kc.<id>) clears itself on completion, which is what
+  # makes a kill quest legitimately repeatable day after day.
+  # ======================================================================
+  - id: vc_daily_hunt_meadows
+    title: "Thin the Wilds"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: kill
+      creature: Greyling
+      count: 15
+    display:
+      mode: message
+      position: Center
+      text: "The meadows are quieter for your work."
+    description: "Cull 15 Greylings."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_hunt
+
+  - id: vc_daily_hunt_blackforest
+    title: "Thin the Wilds"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: kill
+      creature: Greydwarf
+      count: 15
+    display:
+      mode: message
+      position: Center
+      text: "The black woods are quieter for your work."
+    description: "Cull 15 Greydwarves."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_hunt
+
+  - id: vc_daily_hunt_swamp
+    title: "Thin the Wilds"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: kill
+      creature: Draugr
+      count: 15
+    display:
+      mode: message
+      position: Center
+      text: "The mire is quieter for your work."
+    description: "Cull 15 Draugr."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_hunt
+
+  - id: vc_daily_hunt_mountain
+    title: "Thin the Wilds"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: kill
+      creature: Fenring
+      count: 15
+    display:
+      mode: message
+      position: Center
+      text: "The peaks are quieter for your work."
+    description: "Cull 15 Fenrings."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_hunt
+
+  - id: vc_daily_hunt_plains
+    title: "Thin the Wilds"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: kill
+      creature: Goblin
+      count: 15
+    display:
+      mode: message
+      position: Center
+      text: "The plains are quieter for your work."
+    description: "Cull 15 Fulings."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_hunt
+
+  - id: vc_daily_hunt_mistlands
+    title: "Thin the Wilds"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: kill
+      creature: Seeker
+      count: 15
+    display:
+      mode: message
+      position: Center
+      text: "The fog is quieter for your work."
+    description: "Cull 15 Seekers."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_hunt
+
+  - id: vc_daily_hunt_ashlands
+    title: "Thin the Wilds"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: kill
+      creature: Charred_Melee
+      count: 15
+    display:
+      mode: message
+      position: Center
+      text: "The ash is quieter for your work."
+    description: "Cull 15 Charred."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_hunt
+
+  # ======================================================================
+  # DAILY: Tend the Beasts — tame anything
+  # ----------------------------------------------------------------------
+  # The one non-combat daily. No `creature:` filter, so any tame counts.
+  # ======================================================================
+  - id: vc_daily_tame
+    title: "Tend the Beasts"
+    category: Support
+    version: 1
+    once: false
+    cooldown: 30           # guards against a double-fire on one Tame() call
+    scope: player
+    trigger:
+      type: tamed_creature
+    display:
+      mode: message
+      position: Center
+      text: "A wild thing learns to trust you."
+    description: "Tame any creature."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_tame
+
+  # ======================================================================
+  # DAILY: Fell a Lord (BiomeLords)
+  # ----------------------------------------------------------------------
+  # The marquee daily — worth enough on its own to reach the day's cap. Seven
+  # entries again, one per Lord prefab, all sharing one key.
+  # Prefab names from BiomeLords' CreatureFactory.
+  # ======================================================================
+  - id: vc_daily_lord_neck
+    title: "Fell a Lord"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    discord_on_complete: true
+    trigger:
+      type: kill
+      creature: NeckLord
+    display:
+      mode: message
+      position: Center
+      text: "The Neck Lord falls. The waters are still again."
+    description: "Defeat any Biome Lord."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_lord
+
+  - id: vc_daily_lord_greydwarf
+    title: "Fell a Lord"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    discord_on_complete: true
+    trigger:
+      type: kill
+      creature: GreydwarfShamanLord
+    display:
+      mode: message
+      position: Center
+      text: "The Greydwarf Shaman Lord falls. The woods hold their breath."
+    description: "Defeat any Biome Lord."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_lord
+
+  - id: vc_daily_lord_draugr
+    title: "Fell a Lord"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    discord_on_complete: true
+    trigger:
+      type: kill
+      creature: DraugrEliteLord
+    display:
+      mode: message
+      position: Center
+      text: "The Draugr Elite Lord falls. The mire lets go of it at last."
+    description: "Defeat any Biome Lord."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_lord
+
+  - id: vc_daily_lord_fenring
+    title: "Fell a Lord"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    discord_on_complete: true
+    trigger:
+      type: kill
+      creature: FenringLord
+    display:
+      mode: message
+      position: Center
+      text: "The Fenring Lord falls. The howling thins."
+    description: "Defeat any Biome Lord."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_lord
+
+  - id: vc_daily_lord_lox
+    title: "Fell a Lord"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    discord_on_complete: true
+    trigger:
+      type: kill
+      creature: LoxLord
+    display:
+      mode: message
+      position: Center
+      text: "The Lox Lord falls. The plains shake once, then settle."
+    description: "Defeat any Biome Lord."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_lord
+
+  - id: vc_daily_lord_seeker
+    title: "Fell a Lord"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    discord_on_complete: true
+    trigger:
+      type: kill
+      creature: SeekerLord
+    display:
+      mode: message
+      position: Center
+      text: "The Seeker Lord falls. The fog forgets it."
+    description: "Defeat any Biome Lord."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_lord
+
+  - id: vc_daily_lord_valkyrie
+    title: "Fell a Lord"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    discord_on_complete: true
+    trigger:
+      type: kill
+      creature: FallerValkyrieLord
+    display:
+      mode: message
+      position: Center
+      text: "The Fallen Valkyrie Lord falls. Even the ash goes quiet."
+    description: "Defeat any Biome Lord."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_lord
+
+  # ======================================================================
+  # DAILY: Forge a Bond (Lost Scrolls II)
+  # ----------------------------------------------------------------------
+  # Three ways in — recruit, level, or win a duel — all sharing one key, so a
+  # player with an established company still has a route.
+  # These trigger types are raised by Lost Scrolls II via its ServerGuideBridge;
+  # on a server without that mod they simply never fire.
+  # ======================================================================
+  - id: vc_daily_bond_recruit
+    title: "Forge a Bond"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: dvergr_recruited
+    display:
+      mode: message
+      position: Center
+      text: "One of the small folk chooses to walk with you."
+    description: "Recruit, level, or win a duel with a Dvergr companion."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_bond
+
+  - id: vc_daily_bond_levelup
+    title: "Forge a Bond"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: dvergr_level_up
+    display:
+      mode: message
+      position: Center
+      text: "{companionName} grows into the work."
+    description: "Recruit, level, or win a duel with a Dvergr companion."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_bond
+
+  - id: vc_daily_bond_duel
+    title: "Forge a Bond"
+    category: Support
+    version: 1
+    once: false
+    scope: player
+    trigger:
+      type: dvergr_duel_won
+    display:
+      mode: message
+      position: Center
+      text: "{companionName} takes the ring."
+    description: "Recruit, level, or win a duel with a Dvergr companion."
+    rewards:
+      - type: set_player_key
+        key: VC.Q.daily_bond

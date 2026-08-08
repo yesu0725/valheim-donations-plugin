@@ -1,7 +1,7 @@
 using System.Collections;
 using UnityEngine;
 
-// Broadcasts the server's parsed shop catalog to connected clients.
+// Broadcasts the server's parsed shop catalog + quest list to connected clients.
 //
 // valcoin_shop.yaml only exists on whichever machine loaded it (the dedicated
 // server). A vanilla/remote client's own Catalog.Load() finds no such file,
@@ -29,7 +29,13 @@ public class CatalogSync : MonoBehaviour
         while (true)
         {
             if (ZRoutedRpc.instance != null)
+            {
                 RpcLayer.BroadcastCatalog(Catalog.Serialize());
+                // The quest list rides the same loop for the same reasons: it
+                // also only exists server-side, and a client that misses one
+                // broadcast just picks up the next.
+                RpcLayer.BroadcastQuests(QuestCatalog.Serialize());
+            }
             yield return new WaitForSeconds(IntervalSeconds);
         }
     }
