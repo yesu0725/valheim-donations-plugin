@@ -11,13 +11,14 @@ plugin↔backend compatibility matrix.
   Shop now ships a **Soulkeeper Charm** consumable (backend charge ledger +
   in-game skill-save + Valkyrie tombstone carry); cosmetic badge/title/flair
   perks were dropped.
-- **Backend version:** `0.7.0` (see [main.py](../backend/app/main.py)) —
-  **NOT YET DEPLOYED.** 0.7.0 adds ServerGuide quest rewards
-  (`POST /api/quests/claim`, `quest_claims` table, `quest_daily_*` on
-  `/api/state`, `POST /api/admin/quest-reset`). The live service is still 0.6.0,
-  so **every quest completion will 404 and pay nothing until it's deployed** —
-  deploy the backend *before* the plugin. Tests: 84 passing locally.
-- **Previously deployed backend:** `0.6.0`.
+- **Backend version:** `0.7.0` — **deployed to Fly.io 2026-08-08** and verified
+  live: `/openapi.json` reports `0.7.0`, `POST /api/quests/claim` and
+  `POST /api/admin/quest-reset` are present, and `/api/state` carries the four
+  `quest_*` fields. Adds ServerGuide quest rewards (`quest_claims` table, daily
+  cap, streak bonus). No migration ran — `quest_claims` is
+  `CREATE TABLE IF NOT EXISTS` and no existing table was touched. Committed as
+  `fba6db9`, so the deployed image matches a real commit (unlike the 2026-07-13
+  deploy — see [CHANGELOG.md](CHANGELOG.md)). Tests: 84 passing.
   **Deployed and reachable at `https://valheim-donations.fly.dev`** — redeployed
   2026-07-19 adding **`coins_per_usd` to `/api/state`** (from
   `settings.coins_per_unit["USD"]`, currently **50**) so the in-game panel can
@@ -37,7 +38,15 @@ plugin↔backend compatibility matrix.
   Quest content lives in
   [`examples/guidance.valcoin-quests.yaml`](../valheim-plugin/examples/guidance.valcoin-quests.yaml),
   which must be copied to the server's `BepInEx/config/ValheimServerGuide/`.
-  **Not yet built to a profile or tested in-game.**
+  **Deployed to the test profile 2026-08-08** (DLL + quest YAML);
+  `valcoin_quests.yaml` self-writes on first run. **Not yet tested in-game, and
+  not promoted to the dedicated server.** Promote both together — the quest YAML
+  on a server whose plugin is still 5.17.0 would set `VC.Q.*` keys with no
+  watcher to consume them, and they'd all fire at once on the eventual upgrade
+  (harmless — the backend caps them — but noisy).
+  Thunderstore package **5.18.0 zipped, not uploaded**:
+  `Thunderstore files/Valheim_Donations-v5.18.0_2026-08-08_0322.zip`. It ships
+  5.17.0's familiar fix too, since 5.17.0 was never packaged.
   **5.17.0** makes **Familiars survive an armor upgrade** (the aura lives on the
   item instance, and Valheim's upgrade path mints a *new* `ItemData` — it is now
   carried across, and the piece is re-equipped so the familiar comes straight
