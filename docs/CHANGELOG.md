@@ -147,6 +147,22 @@ day's allowance:
 - [`QuestWatcher.cs`](../valheim-plugin/QuestWatcher.cs) — client-side 5s poll
   for `VC.Q.*` keys. Polling, not hooking: there's no event to hook (ServerGuide
   sets the key internally) and a poll self-heals a missed tick.
+- **The key is cleared on server ack, not on send** (`vc_questack`). The first
+  cut cleared it immediately, reasoning that ZRoutedRpc is reliable — which
+  conflates *delivered* with *understood*. First live test proved the
+  difference: the dedicated server was still on 5.17.0, whose `UiActionRouter`
+  has no `quest` case, so it answered `Unknown UI action: quest` while the
+  client had already dropped the key. Because `vc_welcome_haldor` is
+  `once: true` and had fired, the completion was **unrecoverable, not merely
+  unpaid** — upgrading the server afterwards couldn't fix it. The same hole was
+  open for a backend outage or an unpriced quest. Now the ack is sent only on a
+  definitive backend answer; anything else leaves the key and re-reports every
+  60s, so a payout is postponed rather than destroyed.
+- **RPC registration fixed for listen servers.** Only one side was registered,
+  chosen by `IsServer()`, so a host registered the server half and never the
+  client half — no panel messages, no catalog, and no way to receive a quest
+  ack (its own player would have re-reported forever). A host is both; only a
+  dedicated server has no client half.
 - [`QuestFlow.cs`](../valheim-plugin/QuestFlow.cs) — server-side claim + the
   player-facing messaging.
 - [`RpcLayer.cs`](../valheim-plugin/RpcLayer.cs) / [`CatalogSync.cs`](../valheim-plugin/CatalogSync.cs)
@@ -209,6 +225,20 @@ carries the dailies that should take real effort. `item_acquired`'s `count` read
 already holding wood — hence no gathering quests. Multi-tier quests are several
 entries sharing one key (`trigger.creature` is one exact prefab, no wildcard),
 so an Ashlands player isn't sent hunting Greylings.
+
+### Deploying this one
+
+**The ServerGuide YAML and the plugin DLL must be promoted together.** The quest
+lives on the server and syncs to clients; the payout lives in the plugin. Ship
+the YAML alone and the quest fires perfectly while the reward silently doesn't —
+which is exactly how the first live test failed. The dedicated server is not a
+`deploy.ps1` target and its plugin folder needs an elevated shell, so it's easy
+to do by halves. Diagnosis shortcut: **the server log must show
+`[Valcoin] Quest catalog loaded: N quest(s)`** — that line is 5.18.0+ only, and
+its absence is the whole answer. Full runbook in [OPERATIONS.md](OPERATIONS.md).
+
+**Verified working in-game 2026-08-08** on the dedicated server: quests fire,
+coins credit, daily cap and F4 status line behave.
 
 ---
 

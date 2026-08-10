@@ -38,15 +38,16 @@ plugin↔backend compatibility matrix.
   Quest content lives in
   [`examples/guidance.valcoin-quests.yaml`](../valheim-plugin/examples/guidance.valcoin-quests.yaml),
   which must be copied to the server's `BepInEx/config/ValheimServerGuide/`.
-  **Deployed to the test profile 2026-08-08** (DLL + quest YAML);
-  `valcoin_quests.yaml` self-writes on first run. **Not yet tested in-game, and
-  not promoted to the dedicated server.** Promote both together — the quest YAML
-  on a server whose plugin is still 5.17.0 would set `VC.Q.*` keys with no
-  watcher to consume them, and they'd all fire at once on the eventual upgrade
-  (harmless — the backend caps them — but noisy).
+  **Deployed and verified working in-game 2026-08-08** — test profile *and* the
+  dedicated server (DLL + `guidance.valcoin-quests.yaml` + `valcoin_quests.yaml`).
+  Quests fire, coins credit, the daily cap and the F4 status line behave.
   Thunderstore package **5.18.0 zipped, not uploaded**:
-  `Thunderstore files/Valheim_Donations-v5.18.0_2026-08-08_0322.zip`. It ships
+  `Thunderstore files/Valheim_Donations-v5.18.0_2026-08-08_0422.zip`. It ships
   5.17.0's familiar fix too, since 5.17.0 was never packaged.
+  **Promote the ServerGuide YAML and the plugin DLL together** — shipping the
+  YAML alone is what broke the first test (quest fired, reward silently didn't;
+  see [OPERATIONS.md](OPERATIONS.md)). The dedicated server is not a
+  `deploy.ps1` target and its plugin folder needs an **elevated** shell.
   **5.17.0** makes **Familiars survive an armor upgrade** (the aura lives on the
   item instance, and Valheim's upgrade path mints a *new* `ItemData` — it is now
   carried across, and the piece is re-equipped so the familiar comes straight

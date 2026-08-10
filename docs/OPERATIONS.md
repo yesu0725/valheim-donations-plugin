@@ -108,6 +108,78 @@ edit.
 > **Before concluding a code fix didn't work in-game,** compare the deployed
 > DLL's timestamp and size against `valheim-plugin/bin/Release/ValheimDonationSystem.dll`.
 
+## Quest rewards: promote the ServerGuide YAML and the plugin DLL together
+
+A quest is **two halves on two machines**. ServerGuide's YAML (server-side, and
+it syncs the quest to every client) makes the quest *fire*; the donation
+plugin's `QuestWatcher`/`QuestFlow` makes it *pay*. Ship one without the other
+and the quest works perfectly while the reward silently doesn't.
+
+**Worked example (2026-08-08).** The quest YAML was copied to the dedicated
+server, but its `ValheimDonationSystem.dll` was still 5.17.0. Result: the quest
+fired, the client reported it, and nothing paid.
+
+The two log lines that gave the whole diagnosis:
+
+- **Client** `LogOutput.log`: `[Valcoin] Quest 'vc_welcome' completed; reported
+  to server.` → the client half was fine.
+- **Server** `LogOutput.log`: **no `[Valcoin] Quest catalog loaded: N quest(s)`
+  line at all.** That line only exists in 5.18.0+. Its absence *is* the
+  diagnosis — the server had no quest handler, so `UiActionRouter` fell through
+  to `default:` and answered `⚠️ Unknown UI action: quest`.
+
+**Check the server log for `Quest catalog loaded` before debugging anything
+else.** If it's missing, the server is on an old DLL; nothing downstream matters.
+
+> **The dedicated server is not a `deploy.ps1` target** (see the gotcha above),
+> so promoting to it is manual and easy to do by halves. Copy the DLL and the
+> YAML in the same step, and remember the DLL lives under
+> `C:\Program Files (x86)\…`, which needs an **elevated** shell — a non-elevated
+> copy fails with a permission error that's easy to skim past.
+>
+> Restart **both** server and client afterwards: the plugin reads its config and
+> catalogs once, in `Awake`.
+
+### Why a failed payout is no longer lost
+
+Same incident, second cause. `QuestWatcher` used to clear the `VC.Q.<id>` key
+the moment it sent the report, on the reasoning that ZRoutedRpc is reliable.
+That conflates *delivered* with *understood*: the old server received the report
+and did nothing with it, the key was already gone, and `once: true` quests can
+never fire again — so the completion was **unrecoverable, not merely unpaid**.
+Upgrading the server afterwards could not make it good.
+
+Since 5.18.0 the server sends an explicit `vc_questack` **only** once the backend
+returns a definitive answer (credited / already claimed / capped), and the client
+clears the key only on that ack. Everything else leaves the key in place and
+re-reports every 60 s:
+
+| Situation | Behaviour |
+|---|---|
+| Server on an old build (no quest handler) | No ack → retries → pays as soon as the server is upgraded |
+| Backend unreachable | No ack → retries → pays when the backend returns |
+| Quest id has no price in `valcoin_quests.yaml` | No ack → retries; server logs `Unknown quest '<id>'` every 60 s |
+
+That repeating warning is deliberate — it's how a misconfiguration announces
+itself instead of quietly eating rewards.
+
+**Recovering a completion lost before this fix:** the key is gone and the entry
+is marked fired, so re-running it needs ServerGuide state cleared first —
+`vsg_reset_player <player> <entryId>` (e.g. `vc_welcome_haldor`), then redo the
+quest. Alternatively credit directly with `/api/admin/grant`, but resetting is
+better because it re-tests the whole path.
+
+## Testing a daily without waiting for 00:00 UTC
+
+`POST /api/admin/quest-reset` with `{"steam64": "...", "quest_id": "daily_hunt"}`
+clears that claim so it can be earned again immediately; omit `quest_id` to clear
+every quest for the player. It does **not** claw back coins already granted — use
+`/api/admin/grant` with a negative amount for that.
+
+Remember the ServerGuide side has its own state: a `once: false` daily re-fires
+freely, but a `kill`-count daily needs its counter refilled (it clears on
+completion, so just get the kills again).
+
 ## Verifying a change end-to-end
 
 1. In-game, press **F4** to open the panel and click **Donate** — plugin should show a
@@ -119,6 +191,20 @@ edit.
    message and the panel's balance should reflect the new total.
 6. Exercise the Shop and Gift tabs to confirm `/api/spend` and `/api/transfer`
    are behaving.
+
+For **quest rewards**, the equivalent pass (verified working 2026-08-08):
+
+1. Server log shows `[Valcoin] Quest catalog loaded: N quest(s)` at startup. If
+   it doesn't, stop — the server is on a pre-5.18.0 DLL.
+2. Complete a quest in-game. Client log: `Quest '<id>' completed; reported to server.`
+3. Server log: `quest '<id>' paid N to <player> (N/8 today)`.
+4. Client log: `Quest '<id>' acknowledged by server; key cleared.` **If this
+   line never appears**, the report wasn't accepted — the client will keep
+   retrying every 60 s, and the server log says why.
+5. Within `poll_interval_seconds`, the `+N Valcoins!` toast appears and the F4
+   panel's daily line advances (`Daily quests: N/8 · resets in …`).
+6. Re-complete the same daily: no coins, and the panel logs
+   `already claimed today`.
 
 ## Source of truth
 
