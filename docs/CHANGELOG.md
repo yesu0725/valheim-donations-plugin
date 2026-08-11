@@ -62,6 +62,44 @@ newer plugin can ask for something an old backend doesn't serve:
 
 ---
 
+## Config — PayPal removed, full QA sweep — 2026-08-11
+
+**No code change, no version bump.** PayPal auto-credit requires a PayPal
+*business* account, which this server doesn't have; the PayPal.Me fallback could
+never auto-credit at all, so it was only ever a manual-reconciliation path
+dressed up as a donation option.
+
+All six `PAYPAL_*` secrets were unset on Fly. The portal renders no PayPal card
+(the provider list is config-gated) and `/webhooks/paypal` returns 503, so it
+cannot credit even if an old link were used. The handler stays in the codebase,
+dormant — setting the variables is all it takes to restore it.
+
+Verified live afterwards: Ko-fi, PayMongo, and Patreon still render; the three
+live webhooks still answer 401 to a bad-signature probe rather than 503.
+
+### QA sweep — 44/44
+
+[`qa_donation_paths.py`](../backend/qa_donation_paths.py) drives the real ASGI
+app end to end — claim mint → signed webhook → grant → `/api/grants/pending` →
+ack → balance — for every remaining provider, plus forged signatures, duplicate
+webhooks, code reuse, declined charges, plugin-crash redelivery, and ledger
+invariants (balance == grants − spends; no donation granted twice).
+
+Two routing rules it pinned down, neither previously written down:
+
+- A **valid claim code outranks the donor's email link** — donating on a
+  friend's behalf credits the friend, not the donor.
+- A **stale code plus an already-linked email routes to the linked account.**
+  Correct for repeat donors, but a gift attempted with an expired code silently
+  pays the donor instead of the recipient. Asserted so it can't drift unnoticed.
+
+It cannot reach the providers' own servers or the C# plugin applying a grant
+in-game — exactly the two gaps that hid the Ko-fi bug, so they still need a real
+donation to close. **PayMongo has never had a real charge flow through it**, so
+its webhook registration remains unproven by delivery.
+
+---
+
 ## Backend 0.7.1 — 2026-08-11
 
 **Backend-only; no plugin change.** Fixes a silent money-loser: every

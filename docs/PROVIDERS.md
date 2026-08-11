@@ -21,7 +21,12 @@ From [backend/.env.example](../backend/.env.example):
 | `KOFI_VERIFICATION_TOKEN` | Shared secret from Ko-fi's webhook settings |
 | `KOFI_USERNAME` | For portal deep-links (`ko-fi.com/<username>`) |
 
-### PayPal
+### PayPal — **not in use** (removed 2026-08-11)
+Auto-credit needs a PayPal **business** account, which this server doesn't have.
+All `PAYPAL_*` secrets were unset on Fly, so the portal renders no PayPal card
+and `/webhooks/paypal` returns **503**. The handler is left in the codebase,
+dormant — setting the variables below is all it takes to bring it back.
+
 | Variable | Purpose |
 |---|---|
 | `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | REST app credentials |
@@ -65,7 +70,11 @@ From [backend/.env.example](../backend/.env.example):
 > matches on the donor's Ko-fi email. Anonymous Ko-fi donations carry no email
 > and still need `POST /api/admin/credit-unmatched`.
 
-## PayPal
+## PayPal — disabled, kept for reference
+> **Not offered on this server.** The steps below need a PayPal *business*
+> account. Follow them only if you get one; until then leave every `PAYPAL_*`
+> variable unset and the provider stays invisible to donors.
+
 1. developer.paypal.com → **Apps & Credentials** → create REST app.
 2. **Webhooks** on that app → URL `/webhooks/paypal`, subscribe to
    `PAYMENT.CAPTURE.COMPLETED` (and `PAYMENT.SALE.COMPLETED` if you accept

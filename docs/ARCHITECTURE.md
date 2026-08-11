@@ -31,7 +31,7 @@ backend mints AB12-CD34 (TTL 30 min)
 donor visits /portal/AB12-CD34
    ├── Ko-fi          → opens ko-fi.com; donor pastes the code into the message
    │                    box (Ko-fi cannot prefill it), or links by email after
-   ├── PayPal         → opens hosted page with the code in `custom`
+   │                    (PayPal removed 2026-08-11 — needs a business account)
    ├── PayMongo       → portal JS calls /portal/paymongo/link → checkout
    └── Patreon        → opens patreon.com + offers "Link my account" (OAuth)
    ▼

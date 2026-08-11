@@ -5,8 +5,9 @@ files before trusting it if it's been a while. For *what changed* rather than
 *what's true now*, see [CHANGELOG.md](CHANGELOG.md), which also carries the
 plugin↔backend compatibility matrix.
 
-- **Project phase:** 6+ — backend is **live on Fly.io** with **all four
-  providers configured** (Ko-fi, Patreon, PayPal, PayMongo), plugin catalog
+- **Project phase:** 6+ — backend is **live on Fly.io** with **three providers
+  configured** (Ko-fi, Patreon, PayMongo; PayPal removed 2026-08-11 — needs a
+  business account this server doesn't have), plugin catalog
   syncs to remote clients, chat/console commands removed in favor of UI-only.
   Shop now ships a **Soulkeeper Charm** consumable (backend charge ledger +
   in-game skill-save + Valkyrie tombstone carry); cosmetic badge/title/flair
@@ -301,13 +302,12 @@ Per-provider notes worth remembering:
 - **Patreon** — payments carry no claim code, so a first-time patron must click
   **"Link my Patreon account"** on the portal once (OAuth); renewals auto-credit
   thereafter via `provider_links`.
-- **PayPal** — auto-credit requires `PAYPAL_BUSINESS_EMAIL`. The portal builds a
-  `paypal.com/donate/?business=…&custom=<code>` link so the claim code returns
-  as `resource.custom` on the `PAYMENT.SALE.COMPLETED` / `PAYMENT.CAPTURE.COMPLETED`
-  webhook. **Untested risk:** some newer PayPal accounts force fixed "hosted
-  buttons" that can't carry a per-donor `custom`; if this account is one of
-  those, auto-credit won't fire and donations land as `unmatched` (credit them
-  via `POST /api/admin/credit-unmatched`). Confirm with one real ~$1 donation.
+- **PayPal** — **removed 2026-08-11.** Auto-credit required a PayPal *business*
+  account (for `PAYPAL_BUSINESS_EMAIL`), which this server doesn't have; the
+  PayPal.Me fallback could never auto-credit at all. All `PAYPAL_*` secrets are
+  unset, so the card doesn't render and `/webhooks/paypal` returns 503. The
+  handler stays in the codebase, dormant. This also retires the hosted-button
+  risk noted here previously.
 - **PayMongo** — the tightest flow: the portal mints a PaymentLink server-side
   with `metadata.claim_code` baked in, so the code is guaranteed to travel. Live
   `sk_live` key verified by minting a real (unpaid) ₱100 PaymentLink. Covers
@@ -317,9 +317,29 @@ Per-provider notes worth remembering:
   `{% if providers.paymongo %}` and an empty dict is falsy in Jinja, so the card
   stayed hidden whenever PayMongo was configured — now `{"enabled": True}`.
 
-**Live-money testing was deliberately skipped** for PayPal and PayMongo per user
-decision (2026-07-10). They are verified configured (401 probes, PayMongo link
-mint) but no real charge has flowed through either yet.
+**Live-money testing was deliberately skipped** for PayMongo per user decision
+(2026-07-10). It is verified configured (401 probe, live PaymentLink mint) but
+**no real charge has ever flowed through it** — so unlike Ko-fi and Patreon, its
+webhook registration has never been proven by a real delivery. One ₱20 donation
+would close that gap; see the QA matrix below.
+
+### QA sweep — every donation path (2026-08-11)
+
+Full-chain harness ([`qa_donation_paths.py`](../backend/qa_donation_paths.py)):
+claim mint → signed webhook → grant → `/api/grants/pending` → ack → balance,
+**44/44 passing**. Covers all three live providers, both recovery paths, forged
+signatures, duplicate webhooks, code reuse, and ledger invariants.
+
+Two routing rules the sweep pinned down, both worth knowing:
+
+- A **valid claim code outranks the donor's email link**, so donating on a
+  friend's behalf credits the friend.
+- A **stale (expired/used) code plus an already-linked email routes to the
+  linked account.** Right for repeat donors, but it means a gift attempted with
+  an expired code silently pays the donor instead of the recipient.
+
+What the harness cannot reach: the providers' own servers, and the C# plugin
+applying a delivered grant in-game. Both need a real donation to verify.
 
 ## Regenerating this snapshot
 
