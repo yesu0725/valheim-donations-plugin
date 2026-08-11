@@ -29,7 +29,9 @@ backend mints AB12-CD34 (TTL 30 min)
    │  plugin shows the donor: "Donate at /portal, code is AB12-CD34"
    ▼
 donor visits /portal/AB12-CD34
-   ├── Ko-fi / PayPal → opens hosted page (code prefilled where possible)
+   ├── Ko-fi          → opens ko-fi.com; donor pastes the code into the message
+   │                    box (Ko-fi cannot prefill it), or links by email after
+   ├── PayPal         → opens hosted page with the code in `custom`
    ├── PayMongo       → portal JS calls /portal/paymongo/link → checkout
    └── Patreon        → opens patreon.com + offers "Link my account" (OAuth)
    ▼

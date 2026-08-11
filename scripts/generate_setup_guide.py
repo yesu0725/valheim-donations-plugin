@@ -520,8 +520,10 @@ def build_story(facts: ProjectFacts, styles) -> list:
                 "Dashboard -> More -> API. Set Webhook URL to "
                 "https://<your-app>.fly.dev/webhooks/kofi.",
                 "Copy the verification token into KOFI_VERIFICATION_TOKEN.",
-                "Set KOFI_USERNAME so the portal can deep-link with the "
-                "claim code prefilled as the donation message.",
+                "Set KOFI_USERNAME so the portal can deep-link to your page. "
+                "Ko-fi cannot prefill the donation message, so the portal tells "
+                "donors to paste the claim code in themselves; if they forget, "
+                "the portal's 'Already donated?' form credits them by email.",
             ],
             styles["body"],
         )

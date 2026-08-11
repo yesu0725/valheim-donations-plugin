@@ -21,7 +21,7 @@ For "what is true right now" rather than "what changed", see
 | Component | Version | Source of truth |
 |---|---|---|
 | Plugin | **5.18.0** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
-| Backend | **0.7.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
+| Backend | **0.7.1** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
 | Thunderstore package | **5.17.0** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > The Thunderstore package is deliberately **one behind** at 5.17.0 — 5.18.0 has
@@ -59,6 +59,65 @@ newer plugin can ask for something an old backend doesn't serve:
 > `/openapi.json`'s version — that same trap cost a debugging round-trip when
 > the exchange-rate callout appeared to be broken client-side but was really an
 > undeployed backend.
+
+---
+
+## Backend 0.7.1 — 2026-08-11
+
+**Backend-only; no plugin change.** Fixes a silent money-loser: every
+first-time Ko-fi donation was crediting nothing.
+
+### The bug
+
+The portal deep-linked to `ko-fi.com/<user>/?message=<code>` and told the donor
+*"Your code is pre-filled into the message field automatically — nothing to
+paste."* **Ko-fi has no message prefill.** The query param survives in
+`location.search` but Ko-fi never reads it into its message box
+(`textarea[name=txtThanks]`), so the webhook arrived with no claim code,
+`codes.find_in_text()` returned `None`, and — with no `provider_links` row for a
+first-time donor — the donation was filed `unmatched` and paid out nothing.
+
+Donors who followed the instructions exactly got nothing, on the provider the
+portal labels **Recommended**. Found after a $10 donation on 2026-08-11
+(donation id 4) never landed; credited manually via `/api/admin/credit-unmatched`.
+
+**Why the tests didn't catch it:** every Ko-fi test injected the code straight
+into the payload's `message` field, so they all exercised the parser and none
+exercised the delivery assumption. The one integration assumption in the chain
+was the only untested link in it.
+
+### Changes
+
+- [`portal.py`](../backend/app/routes/portal.py) — Ko-fi deep link drops the
+  dead `?message=` param, with a comment recording why so it doesn't come back.
+- [`portal_code.html`](../backend/app/templates/portal_code.html) — the Ko-fi
+  card now tells donors to paste the code into "Your message" and shows it
+  inline, mirroring how the PayPal.Me card already handled the same limitation.
+  Card converted from `<a>` to `<div>` so it can hold a form.
+- **New `POST /portal/kofi/link`** — self-service rescue for donors who forgot.
+  Enter the Ko-fi email, and it binds the provider link, retro-credits, and
+  burns the claim code. Surfaced as an "Already donated?" disclosure.
+- [`donations.py`](../backend/app/donations.py) — `credit_unmatched_for()` takes
+  a `since` bound; provider-link matching is now case-insensitive.
+
+### Two guardrails worth knowing
+
+- **The retro-credit sweep is time-scoped.** The Ko-fi flow passes the claim
+  code's mint time as `since`, so linking can only capture donations from *this*
+  portal session. Without it, anyone holding a valid code could guess a
+  stranger's Ko-fi email and claim their stranded donations.
+- **Email casing was a latent second failure.** The auto-link in
+  `record_donation()` stored whatever casing Ko-fi echoed but looked it up with
+  an exact match, so a donor who typed `Donor@` once and `donor@` the next time
+  would have missed their own link. Both sides now compare with `LOWER()`.
+
+### Tests
+
+[`test_kofi_link.py`](../backend/tests/test_kofi_link.py) — 8 new, including a
+regression guard asserting the portal never emits `message=` and never uses the
+words "prefilled"/"pre-filled". Be clear on its limits: **nothing in CI can
+verify Ko-fi's own behavior.** The guard proves we no longer depend on behavior
+Ko-fi doesn't have, which is the assumption that actually broke.
 
 ---
 

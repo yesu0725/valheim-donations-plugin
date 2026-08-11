@@ -55,7 +55,15 @@ From [backend/.env.example](../backend/.env.example):
 ## Ko-fi
 1. Dashboard → **More → API** → set Webhook URL to `/webhooks/kofi`.
 2. Copy the verification token → `KOFI_VERIFICATION_TOKEN`.
-3. Set `KOFI_USERNAME` so the portal can deep-link with `?message=<code>` prefilled.
+3. Set `KOFI_USERNAME` so the portal can deep-link to your Ko-fi page.
+
+> **Ko-fi has no message prefill.** Do not add `?message=<code>` to the deep
+> link — the param survives in the URL but Ko-fi never reads it into its message
+> box, so the donation arrives with no claim code and lands as `unmatched`.
+> Donors paste the code themselves, and anyone who forgets can recover it via
+> the "Already donated?" form on the portal (`POST /portal/kofi/link`), which
+> matches on the donor's Ko-fi email. Anonymous Ko-fi donations carry no email
+> and still need `POST /api/admin/credit-unmatched`.
 
 ## PayPal
 1. developer.paypal.com → **Apps & Credentials** → create REST app.
