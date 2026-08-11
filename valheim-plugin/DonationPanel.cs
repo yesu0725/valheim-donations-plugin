@@ -681,8 +681,10 @@ public class DonationPanel : MonoBehaviour
         GUILayout.Label("How it works", _label);
         GUILayout.Label("1.  Click \"Get my donation code\" below to generate your personal code.", _label);
         GUILayout.Label("2.  Click \"Open donation portal\" - it opens in your web browser.", _label);
-        GUILayout.Label("3.  Pick a provider (Ko-fi, PayPal, Patreon, or GCash/Maya).", _label);
-        GUILayout.Label("4.  Paste your code into the donation message if it isn't already filled in.", _label);
+        GUILayout.Label("3.  Pick a provider (Ko-fi, Patreon, or GCash/Maya).", _label);
+        GUILayout.Label("4.  On Ko-fi, paste your code into the message box - it can't be filled in " +
+                        "for you. GCash/Maya carries the code automatically, and Patreon needs a " +
+                        "one-time account link instead.", _label);
         GUILayout.Label("5.  Your Valcoins are credited automatically within a few seconds.", _label);
         GUILayout.Space(10);
 

@@ -20,15 +20,18 @@ For "what is true right now" rather than "what changed", see
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Plugin | **5.18.0** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
+| Plugin | **5.19.0** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
 | Backend | **0.7.1** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
-| Thunderstore package | **5.17.0** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
+| Thunderstore package | **5.19.0** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
-> The Thunderstore package is deliberately **one behind** at 5.17.0 — 5.18.0 has
-> not been cut as a release. Packaging is its own checklist
-> ([THUNDERSTORE.md](THUNDERSTORE.md)) and bumping `manifest.json` is what
-> starts it, so the four-places rule below applies at release time, not at
-> commit time.
+> **5.18.0 was never published.** It was fully staged — manifest, package README
+> and player changelog all bumped — but no zip was ever uploaded. Its quest
+> content ships inside 5.19.0 instead, so the player-facing changelog carries
+> both entries and an upgrade from 5.17.0 gets everything. The version was
+> burned rather than reused because a 5.18.0 DLL already existed on disk and on
+> the test profile; shipping different bytes under that number is the same trap
+> that cost a debugging round-trip when the backend advertised 0.5.0 while
+> already enforcing 0.6.0 behaviour.
 
 The plugin version lives in **four** places that must agree (`Plugin.cs`,
 `manifest.json`, the package `README.md`, and [STATUS.md](STATUS.md)); the
@@ -59,6 +62,31 @@ newer plugin can ask for something an old backend doesn't serve:
 > `/openapi.json`'s version — that same trap cost a debugging round-trip when
 > the exchange-rate callout appeared to be broken client-side but was really an
 > undeployed backend.
+
+---
+
+## Plugin 5.19.0 — 2026-08-11
+
+**First Thunderstore release since 5.17.0.** Carries 5.18.0's quest system,
+which was staged but never published — see the note under Current versions for
+why that number was burned rather than reused.
+
+Panel copy only; no behavioural change in the plugin. Backend-side, the Ko-fi
+rescue form it points at needs **0.7.1+** (already deployed).
+
+- [`DonationPanel.cs`](../valheim-plugin/DonationPanel.cs) — the Donate tab's
+  "How it works" steps. Step 3 no longer offers PayPal. Step 4 was *"Paste your
+  code into the donation message if it isn't already filled in"* — the last echo
+  of the prefill assumption that caused the 0.7.1 bug — and now states the real
+  per-provider rule: paste on Ko-fi, automatic on GCash/Maya, one-time account
+  link on Patreon. **The panel had never mentioned the Patreon link step**,
+  despite first-time patrons being uncreditable without it.
+- Package metadata — `manifest.json` description and the package README both
+  advertised PayPal as one of four providers. Now three.
+
+| Plugin needs | Minimum backend | Symptom if too old |
+|---|---|---|
+| Ko-fi "Already donated?" rescue (`/portal/kofi/link`) | 0.7.1 | Form 404s; stranded Ko-fi donations need an admin |
 
 ---
 

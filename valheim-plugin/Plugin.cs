@@ -10,7 +10,7 @@ using HarmonyLib;
 // inherited BaseUnityPlugin.Config (a BepInEx ConfigFile) property.
 using PluginConfig = Config;
 
-[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.18.0")]
+[BepInPlugin("com.taeguk.valheimdonations", "Valheim Donations", "5.19.0")]
 public class Plugin : BaseUnityPlugin
 {
     public static HashSet<string> AdminSteamIDs = new HashSet<string>();

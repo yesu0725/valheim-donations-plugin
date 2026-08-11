@@ -30,7 +30,13 @@ plugin↔backend compatibility matrix.
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.18.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.19.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+  **5.19.0** is panel copy only: the Donate tab no longer offers PayPal, and its
+  step 4 no longer implies your claim code might already be filled in — the last
+  echo of the assumption behind the backend 0.7.1 Ko-fi bug. It now states the
+  real per-provider rule (paste on Ko-fi, automatic on GCash/Maya, one-time link
+  on Patreon; the panel had never mentioned that Patreon step at all). It also
+  carries everything in 5.18.0, which was staged but never uploaded.
   **5.18.0** adds **ServerGuide quest rewards** — a one-time "Patron's Welcome"
   worth 30 Valcoins and a daily pool capped at 8/day, with a 7-day streak bonus.
   ServerGuide is **unmodified**: quests set a `VC.Q.*` player key via its stock
@@ -42,9 +48,12 @@ plugin↔backend compatibility matrix.
   **Deployed and verified working in-game 2026-08-08** — test profile *and* the
   dedicated server (DLL + `guidance.valcoin-quests.yaml` + `valcoin_quests.yaml`).
   Quests fire, coins credit, the daily cap and the F4 status line behave.
-  Thunderstore package **5.18.0 zipped, not uploaded**:
-  `Thunderstore files/Valheim_Donations-v5.18.0_2026-08-08_0422.zip`. It ships
-  5.17.0's familiar fix too, since 5.17.0 was never packaged.
+  Thunderstore package **5.19.0 zipped, not uploaded** (see the zip name in the
+  release section below). It ships 5.18.0's quests and 5.17.0's familiar fix
+  too, since neither was ever packaged. **5.18.0's number was burned, not
+  reused** — that DLL is already running on the dedicated server and the test
+  profile, so republishing different bytes under it would make "5.18.0"
+  ambiguous.
   **Promote the ServerGuide YAML and the plugin DLL together** — shipping the
   YAML alone is what broke the first test (quest fired, reward silently didn't;
   see [OPERATIONS.md](OPERATIONS.md)). The dedicated server is not a
