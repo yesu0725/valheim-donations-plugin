@@ -60,8 +60,16 @@ public class DonationPanel : MonoBehaviour
     private int    _donateTtlMinutes;
     private string _donateStatus;                // transient error/status line
     private float  _donateCooldownUntil;         // realtimeSinceStartup
+    private float  _donateWaitingSince = -1f;    // >=0 while a request is in flight
     private float  _copiedFlashUntil;            // "Copied!" transient
     private const float DonateCooldownSeconds = 30f;
+
+    // How long to wait for the server's reply before giving up. The server's own
+    // HTTP call to the backend times out at 15s (BackendClient.Send), so anything
+    // past 20s means the reply is never coming — the action reached the server but
+    // its answer didn't come back. Without this the panel sat on "Requesting your
+    // code..." forever, which reads as a dead button and hides a server-side fault.
+    private const float DonateReplyTimeoutSeconds = 20f;
 
     // Terms-of-use modal.
     private bool _showTerms;
@@ -250,6 +258,7 @@ public class DonationPanel : MonoBehaviour
             _donateUrl  = parts.Length > 1 ? parts[1] : null;
             _donateTtlMinutes = (parts.Length > 2 && int.TryParse(parts[2], out var t)) ? t : 0;
             _donateStatus = null;
+            _donateWaitingSince = -1f;   // reply arrived; stop the timeout clock
             return;
         }
 
@@ -257,6 +266,7 @@ public class DonationPanel : MonoBehaviour
         {
             _donateStatus = msg.Substring(DonateErrPrefix.Length);
             _donateCooldownUntil = 0f;   // let them retry immediately after a failure
+            _donateWaitingSince = -1f;
             return;
         }
 
@@ -709,7 +719,21 @@ public class DonationPanel : MonoBehaviour
             _donateCooldownUntil = now + DonateCooldownSeconds;
             _donateStatus = "Requesting your code...";
             _donateCode = null;
+            _donateWaitingSince = now;
             RpcLayer.SendAction("donate");
+        }
+
+        // Give up if the server never answers. The request is fire-and-forget over
+        // an RPC with no reply channel of its own, so a server that takes the
+        // action but never pushes a panel message would otherwise leave this
+        // spinning silently until the player restarts the game.
+        if (_donateWaitingSince >= 0f && now - _donateWaitingSince > DonateReplyTimeoutSeconds)
+        {
+            _donateWaitingSince = -1f;
+            _donateCooldownUntil = 0f;   // let them retry straight away
+            _donateStatus = "The server didn't answer in time. Press the button again, and "
+                          + "if it keeps failing tell an admin to check the server log for "
+                          + "[Valcoin] errors — your Valcoins are safe either way.";
         }
 
         // Transient status / error line.

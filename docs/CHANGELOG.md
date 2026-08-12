@@ -20,9 +20,9 @@ For "what is true right now" rather than "what changed", see
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Plugin | **5.19.0** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
+| Plugin | **5.19.1** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
 | Backend | **0.7.1** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
-| Thunderstore package | **5.19.0** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
+| Thunderstore package | **5.19.1** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
 > and player changelog all bumped — but no zip was ever uploaded. Its quest
@@ -62,6 +62,40 @@ newer plugin can ask for something an old backend doesn't serve:
 > `/openapi.json`'s version — that same trap cost a debugging round-trip when
 > the exchange-rate callout appeared to be broken client-side but was really an
 > undeployed backend.
+
+---
+
+## Plugin 5.19.1 — 2026-08-11
+
+**The Donate tab could hang forever.** `_donateStatus` was set to "Requesting
+your code..." on click and only ever cleared by a reply from the server. If no
+reply came, nothing timed it out — the line stayed up until the game restarted,
+and the 30s cooldown blocked retries in the meantime. A server-side fault was
+therefore indistinguishable from a dead button.
+
+[`DonationPanel.cs`](../valheim-plugin/DonationPanel.cs) now stamps
+`_donateWaitingSince` on click and gives up after **20s** — past the server's own
+15s backend timeout ([`BackendClient.Send`](../valheim-plugin/BackendClient.cs)),
+so anything later is a reply that is never coming. On timeout it clears the
+cooldown, explains what happened, and points at the server log. Both reply paths
+in `OnServerMessage` stop the clock.
+
+### Found while investigating a live report
+
+A player reported the button dead after upgrading to 5.19.0. It was **not** the
+upgrade: the whole 5.18.0→5.19.0 plugin diff is two `GUILayout.Label` strings and
+the version constant. Verified during triage — one DLL in the profile loaded
+once, `vc_panel` registered, no exceptions, reply parser and `SendAction`
+untouched, `SharedCoroutineRunner` is `DontDestroyOnLoad`, and `BackendClient`
+invokes its callback on every path. Meanwhile the backend logged
+`POST /api/claim → 200` for both button presses.
+
+So the action reached the server, the server got a valid code, and the reply
+never came back — a dedicated-server fault, the same shape as `e9dc078`, where
+the server lagging the client made an action fall through and answer nothing
+useful. **This release does not fix that root cause**; it stops the client
+hiding it. The dedicated server's `Loading [Valheim Donations x.y.z]` line is
+where that gets resolved.
 
 ---
 

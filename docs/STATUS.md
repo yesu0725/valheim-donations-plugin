@@ -30,7 +30,13 @@ plugin↔backend compatibility matrix.
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.19.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.19.1` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+  **5.19.1** stops the Donate tab hanging on "Requesting your code..." forever
+  when the server never replies — it now times out after 20s, explains itself and
+  re-enables the button. **Open:** a live report of exactly that hang is *not*
+  fixed by this; the action reaches the dedicated server and the backend returns
+  200, but no reply comes back. Check the dedicated server's plugin version —
+  `e9dc078` records the same shape when that box lags the client.
   **5.19.0** is panel copy only: the Donate tab no longer offers PayPal, and its
   step 4 no longer implies your claim code might already be filled in — the last
   echo of the assumption behind the backend 0.7.1 Ko-fi bug. It now states the
