@@ -55,21 +55,36 @@ public static class CoinManager
         }
     }
 
-    public static void Save()
+    /// Returns false if the write failed. Callers that are about to tell the
+    /// backend a grant was delivered MUST check this — acking a grant we didn't
+    /// persist drops it permanently (the backend won't re-send, and the balance
+    /// reverts on the next restart).
+    public static bool Save()
     {
         try
         {
             File.WriteAllText(SaveFile, JsonConvert.SerializeObject(_state, Formatting.Indented));
+            return true;
         }
         catch (Exception ex)
         {
             Debug.LogError($"[CoinManager] Failed to save: {ex.Message}");
+            return false;
         }
     }
 
     public static int GetBalance(string steamId)
     {
         return _state.balances.TryGetValue(steamId, out var v) ? v : 0;
+    }
+
+    /// Distinguishes "we know this player has 0" from "we have never seen this
+    /// player". GetBalance flattens both to 0, which is fine for display but
+    /// wrong for any check that refuses an action — the backend owns the real
+    /// ledger, and a player missing from this cache still has their coins.
+    public static bool TryGetKnownBalance(string steamId, out int balance)
+    {
+        return _state.balances.TryGetValue(steamId, out balance);
     }
 
     public static void AddCoins(string steamId, int amount)
@@ -98,7 +113,21 @@ public static class CoinManager
             _state.recentGrants.RemoveRange(0, drop);
             foreach (var id in dropped) _seen.Remove(id);
         }
-        AddCoins(steamId, amount);   // also Saves
+
+        _state.balances[steamId] = GetBalance(steamId) + amount;
+        if (!Save())
+        {
+            // Roll the whole thing back so the in-memory state matches what is
+            // on disk, then throw. GrantPoller's catch skips the ack, so the
+            // backend re-sends next tick instead of the grant being consumed by
+            // a write that never landed. Without this a read-only config dir
+            // silently ate every grant: applied in memory, acked to the backend,
+            // gone after the next restart.
+            _state.balances[steamId] = GetBalance(steamId) - amount;
+            _seen.Remove(grantId);
+            _state.recentGrants.Remove(grantId);
+            throw new IOException($"could not persist grant {grantId} for {steamId}");
+        }
         return true;
     }
 }

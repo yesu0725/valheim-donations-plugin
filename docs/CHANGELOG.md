@@ -20,9 +20,9 @@ For "what is true right now" rather than "what changed", see
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Plugin | **5.19.1** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
-| Backend | **0.7.1** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
-| Thunderstore package | **5.19.1** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
+| Plugin | **5.19.2** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
+| Backend | **0.8.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
+| Thunderstore package | **5.19.2** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
 > and player changelog all bumped — but no zip was ever uploaded. Its quest
@@ -62,6 +62,63 @@ newer plugin can ask for something an old backend doesn't serve:
 > `/openapi.json`'s version — that same trap cost a debugging round-trip when
 > the exchange-rate callout appeared to be broken client-side but was really an
 > undeployed backend.
+
+---
+
+## Backend 0.8.0 · Plugin 5.19.2 — 2026-08-12
+
+### Backend — admin ledger
+
+The economy was only inspectable in pieces: `/api/spends/{steam64}` covered one
+player's spending, `/api/state` gave a balance with no history, and **grants had
+no read endpoint at all**. Anything server-wide meant `flyctl ssh` and hand-written
+SQL. The two surfaces that looked like logs were both ephemeral — Fly retains
+minutes, and the server's BepInEx log is overwritten on every restart, which is
+exactly why a donate failure on 2026-08-11 was unreconstructable an hour later.
+
+- **`GET /api/admin/ledger`** — grants, spends and donations merged into one
+  time-ordered feed. Filters: `steam64`, `since` (`7d` / `24h` / `2026-08-01`),
+  `kind`, `limit` (capped at 1000).
+- **`GET /admin/ledger`** — the same query as an HTML table with summary tiles.
+
+Two decisions worth keeping:
+
+- **Auth is Bearer *or* HTTP Basic, never `?token=`.** A token in the query
+  string lands in Fly's access logs, browser history and any `Referer` header —
+  and this is the token that mints claim codes and grants coins. Basic keeps it
+  in a header and makes browsers prompt. The page sends `Cache-Control: no-store`
+  and `X-Robots-Tag: noindex`.
+- **Donation rows carry no coin value.** A credited donation *also* writes a
+  grant row, so summing both would double every donation. Donation rows show the
+  fiat amount and the Granted tile counts grants only. Asserted in tests, because
+  this is precisely the sort of thing that misleads someone reconciling numbers.
+
+Caught by its own tests: filtering by `kind` broke the query outright — the
+column aliases were only on the first `SELECT` of the `UNION`, so a single-branch
+query left `ORDER BY at` with no such column.
+
+### Plugin 5.19.2 — two coin-integrity bugs
+
+Found while investigating a report that a donor "didn't get" his Valcoins. He
+had — the ledger reconciled exactly (1530 granted, 1300 spent on
+`familiar_valkyrie`, 230 left) and the report was a misunderstanding. These two
+are real regardless:
+
+- **[`ShopHandler.cs`](../valheim-plugin/ShopHandler.cs) /
+  [`Flows.cs`](../valheim-plugin/Flows.cs)** — the local pre-check called
+  `CoinManager.GetBalance`, which returns 0 for a player it has never seen. Any
+  player absent from `coin_balances.json` (fresh server, stale or restored cache)
+  was told *"Not enough Valcoins (0 / N)"* while the backend held their coins.
+  New `TryGetKnownBalance` separates "known to be 0" from "never seen"; unknown
+  now falls through to the backend, which owns the ledger and answers 402.
+- **[`CoinManager.cs`](../valheim-plugin/CoinManager.cs)** — `Save()` swallowed
+  write failures and returned void, so `TryApplyGrant` reported success and
+  `GrantPoller` acked the grant. The backend then never re-sent it and the
+  balance reverted on the next restart: silent coin loss. `Save()` now returns a
+  status, and a failed persist rolls the grant back and throws so the ack is
+  skipped and it retries. A read-only config directory would have quietly eaten
+  every grant — and the dedicated server's plugin folder is under
+  `Program Files`, which is exactly that without an elevated shell.
 
 ---
 

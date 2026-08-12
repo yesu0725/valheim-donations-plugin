@@ -28,8 +28,12 @@ public static class ShopHandler
         { tell($"Unknown SKU: {skuId}. Check the Shop tab for the list."); return; }
 
         // Cheap local pre-check so we don't make a network call only to bounce.
-        int local = CoinManager.GetBalance(steam64);
-        if (local < sku.Price)
+        // Only veto on a balance we actually hold: a player absent from the cache
+        // (new server, wiped/stale coin_balances.json, restored backup) still has
+        // their coins on the backend, and treating "unknown" as 0 refused them
+        // their own money. The backend owns the ledger and answers 402 with a
+        // clear message, so when in doubt let the spend through and let it decide.
+        if (CoinManager.TryGetKnownBalance(steam64, out int local) && local < sku.Price)
         { tell($"Not enough Valcoins ({local} / {sku.Price})."); return; }
 
         // For grant_perk SKUs, refuse re-purchase if they already own it.

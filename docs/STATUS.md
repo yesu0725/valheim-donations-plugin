@@ -30,7 +30,13 @@ plugin↔backend compatibility matrix.
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.19.1` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.19.2` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+  **5.19.2** fixes two coin-integrity bugs: the shop/gift pre-check treated a
+  player missing from the local cache as having 0 coins and refused them their
+  own money, and a failed balance-file write still acked the grant to the backend
+  (silent loss on the next restart). Backend **0.8.0** adds the admin ledger —
+  `GET /admin/ledger` (HTML) and `/api/admin/ledger` (JSON), the first read
+  surface for grant history.
   **5.19.1** stops the Donate tab hanging on "Requesting your code..." forever
   when the server never replies — it now times out after 20s, explains itself and
   re-enables the button. **Open:** a live report of exactly that hang is *not*
