@@ -21,7 +21,7 @@ For "what is true right now" rather than "what changed", see
 | Component | Version | Source of truth |
 |---|---|---|
 | Plugin | **5.19.2** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
-| Backend | **0.8.1** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
+| Backend | **0.8.2** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
 | Thunderstore package | **5.19.2** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
@@ -62,6 +62,40 @@ newer plugin can ask for something an old backend doesn't serve:
 > `/openapi.json`'s version — that same trap cost a debugging round-trip when
 > the exchange-rate callout appeared to be broken client-side but was really an
 > undeployed backend.
+
+---
+
+## Backend 0.8.2 — 2026-08-12
+
+**Trust pages + de-risked branding, against the Webroot phishing block.**
+BrightCloud/Webroot categorised `valheim-donations.fly.dev/portal` as
+**"Phishing Site (RT)"** — a real-time classifier verdict, not a curated
+listing. Three signals fed it, and this release addresses the two we control
+without a domain.
+
+- **New `/privacy`, `/terms`, `/contact`**, linked from the footer of every page.
+  A site that asks for money with no policy pages and no way to reach a human
+  reads as a throwaway. They're also simply the honest thing to publish when
+  taking donations, so this is not just classifier appeasement.
+- **`brand_tagline` default changed** from *"Official donation portal"* to
+  *"Player-funded community server"*. That string renders into the page header
+  **and the `meta description`**, and "Official &lt;thing&gt;" next to payment
+  branding on an unrelated domain is close to a literal template match for
+  brand-impersonation heuristics.
+- **New `BRAND_CONTACT_EMAIL`** (blank = Discord only), surfaced on all three
+  pages.
+
+The pages state only what the code actually does — no card data ever reaches the
+service, what each provider hands us (Ko-fi an email, Patreon a member id), the
+real claim-code TTL rendered from settings, and that Valcoins have no cash value.
+15 tests, including a guard that no page claims to be "official" (allowing the
+terms page's *unofficial* disclaimer) and that the TTL is rendered rather than
+hardcoded.
+
+**The root cause is still the host.** `*.fly.dev` is a shared, heavily-abused
+subdomain with no reputation of its own, and the real-time classifier can
+re-flag it at any time. A custom domain is the actual fix; these changes make the
+reclassification request credible and stop the site re-earning the score.
 
 ---
 
