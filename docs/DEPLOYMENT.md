@@ -8,8 +8,15 @@ onto the Valheim dedicated server — see [PLUGIN.md](PLUGIN.md) for that half.
 - **App:** `valheim-donations` → `https://valheim-donations.fly.dev`
 - **Region:** `sin`, 1 machine, `min_machines_running = 1` (always awake for webhooks)
 - **Volume:** `valcoin_data` (1 GB), created and mounted at `/data`
+- **Admin ledger:** `GET /admin/ledger` (HTML, Basic auth — any username, the
+  `PLUGIN_TOKEN` as password) and `GET /api/admin/ledger` (JSON, Bearer).
+  `LEDGER_HIDDEN_STEAM64S` is a comma-separated list of accounts hidden from the
+  default view — set to the operator's own Steam64 so test grants don't swamp the
+  real economy. Hidden rows are still reachable via `include_hidden=true` or by
+  filtering for that Steam64 directly.
 - **Secrets set:** `PLUGIN_TOKEN`, `PUBLIC_BASE_URL`, `DONATION_URL`,
-  `BRAND_*` — plus **all four providers now live:**
+  `BRAND_*`, `LEDGER_HIDDEN_STEAM64S` — plus the providers
+  (**PayPal removed 2026-08-11**, see [PROVIDERS.md](PROVIDERS.md)):
   - **Ko-fi:** `KOFI_VERIFICATION_TOKEN`, `KOFI_USERNAME`
   - **Patreon:** `PATREON_WEBHOOK_SECRET`, `PATREON_USERNAME`,
     `PATREON_CLIENT_ID`, `PATREON_CLIENT_SECRET`, `PATREON_REDIRECT_URI`

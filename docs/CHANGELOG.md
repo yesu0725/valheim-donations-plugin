@@ -21,7 +21,7 @@ For "what is true right now" rather than "what changed", see
 | Component | Version | Source of truth |
 |---|---|---|
 | Plugin | **5.19.2** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
-| Backend | **0.8.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
+| Backend | **0.8.1** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
 | Thunderstore package | **5.19.2** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
@@ -62,6 +62,33 @@ newer plugin can ask for something an old backend doesn't serve:
 > `/openapi.json`'s version — that same trap cost a debugging round-trip when
 > the exchange-rate callout appeared to be broken client-side but was really an
 > undeployed backend.
+
+---
+
+## Backend 0.8.1 — 2026-08-12
+
+**Hide operator/test accounts from the ledger.** The owner's own account carries
+years of test grants and admin play money that swamped the real economy in
+`/admin/ledger` — the totals were dominated by coins nobody donated.
+
+New `LEDGER_HIDDEN_STEAM64S` (comma-separated Steam64s). Rows from those
+accounts are dropped from the default view *and its totals*.
+
+Built as a default, not a censor — an audit surface that silently drops rows is
+worse than a noisy one:
+
+- The view **says what it hid**: `hidden_entries` / `hidden_accounts` in the JSON
+  summary, and a banner naming the accounts with a one-click "Show them" link.
+- `include_hidden=true` (or the checkbox) restores everything.
+- **Filtering for a hidden Steam64 shows it anyway.** A search for a specific
+  player that silently returns an empty page is a worse surprise than seeing the
+  account you explicitly asked about.
+
+One trap worth recording: the exclusion is
+`(steam64 IS NULL OR steam64 NOT IN (…))`. `NOT IN` against `NULL` evaluates to
+`NULL`, not true, so a naive filter would have dropped every **unmatched
+donation** the moment any account was hidden — exactly the rows an operator most
+needs to see. Covered by a test.
 
 ---
 
