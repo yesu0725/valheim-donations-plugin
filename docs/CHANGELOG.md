@@ -21,7 +21,7 @@ For "what is true right now" rather than "what changed", see
 | Component | Version | Source of truth |
 |---|---|---|
 | Plugin | **5.19.2** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
-| Backend | **0.8.2** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
+| Backend | **0.9.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
 | Thunderstore package | **5.19.2** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
@@ -62,6 +62,46 @@ newer plugin can ask for something an old backend doesn't serve:
 > `/openapi.json`'s version — that same trap cost a debugging round-trip when
 > the exchange-rate callout appeared to be broken client-side but was really an
 > undeployed backend.
+
+---
+
+## Backend 0.9.0 — 2026-08-12
+
+**The service now hosts the public website too.** Custom domain
+`taegukgaming.com` (Squarespace-registered, DNS there) with three hostnames on
+one Fly app:
+
+| Host | Serves |
+|---|---|
+| `www.taegukgaming.com` | the website — canonical |
+| `taegukgaming.com` | 301 → www |
+| `donate.taegukgaming.com` | the donation portal |
+
+**Why one app instead of a website host.** The Fly machine already runs 24/7 for
+webhooks (`min_machines_running = 1`), so extra hostnames cost nothing and
+Let's Encrypt certs are free — versus roughly $200/yr for a Squarespace plan,
+whose "Coming Soon" placeholder was all the apex served. And because it is one
+app, `/privacy` and `/terms` needed **no new code** to appear on the website:
+every hostname already serves every route.
+
+### Breaking: `/` is now the landing page, liveness moved to `/health`
+
+`/` returned `{"status":"ok"}`, which is right for `*.fly.dev` and wrong for a
+domain a visitor might type. Checked before moving it: the plugin only calls
+`/api/*`, `fly.toml` defines no HTTP health check, and nothing else referenced
+it. Update any uptime monitor pointed at `/`.
+
+### Canonical host + apex redirect
+
+One app on several names means the same page is reachable at several URLs.
+`SITE_CANONICAL_HOST` emits `<link rel="canonical">`, and `SITE_REDIRECT_HOSTS`
+lists hosts 301'd to it.
+
+**The donation host is deliberately never redirected.** Claim-code links already
+in players' hands point at it, and so do the provider webhooks — a 301 on a POST
+is a quiet way to lose a donation. There are tests for both.
+
+11 new tests (145 total).
 
 ---
 
