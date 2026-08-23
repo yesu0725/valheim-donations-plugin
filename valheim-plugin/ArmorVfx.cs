@@ -50,13 +50,19 @@ public static class ArmorVfx
         public string[] StripChildHints; // destroy child vfx whose name matches (e.g. Gjall drips)
         public bool   HasLight;        // add a real point light (guaranteed-visible glow)
         public Color  LightColor;
+        // Borrow another creature's glow (the Fallen Valkyrie wears the Wraith's
+        // in place of its own smoke). Grafted after the familiar's own particles
+        // are tamed, so def.Scale never shrinks it away — see GraftGlow.
+        public string   GlowFromPrefab;
+        public string[] GlowChildHints;
+        public float    GlowScale = 1f;  // size in PLAYER space, not familiar space
         // Flat damage added to the owner's attacks while this familiar is
         // equipped (via SE_FamiliarBond). Small on purpose — flavor, not power.
         public float  Slash, Pierce, Blunt, Fire, Frost, Spirit;
     }
 
-    // Where every familiar hovers: at the player's RIGHT side, head height.
-    public static readonly Vector3 CompanionOffset = new Vector3(0.45f, 1.55f, 0f);
+    // Where every familiar hovers: at the player's LEFT side, head height.
+    public static readonly Vector3 CompanionOffset = new Vector3(-0.75f, 1.55f, 0f);
 
     // "Familiars" — miniature flying creatures hovering at the shoulder, bound
     // to the equipped helmet. All head-slot. Ghost keeps its particle-child +
@@ -91,9 +97,26 @@ public static class ArmorVfx
             Raise = 0.35f, TameParticles = true,
             StripChildHints = new[] { "drip", "droplet", "tar", "gland" },
             Blunt = 2f, Fire = 1f },
+        // Smoke stripped and replaced with the Wraith's glow (owner's call — the
+        // full-size smoke trail read as a grey smudge at familiar scale). "smoke"
+        // is the only hint needed: the prefab's smoke children are Smoke_local
+        // (x7) and Smoke, confirmed from a live log. Kept narrow on purpose — a
+        // loose hint destroys renderer children and leaves an invisible familiar.
+        // Spores_World and EyeTrail_L/R are hers to keep.
         ["fallen_valkyrie"] = new Aura { Id = "fallen_valkyrie", Slot = "head", Display = "Fallen Valkyrie",
             Suffix = "of the Valkyrie", ParentPrefab = "FallenValkyrie", WholeCreature = true, Scale = 0.15f,
             Raise = 0.3f, TameParticles = true,
+            StripChildHints = new[] { "smoke" },
+            // The Wraith's "glow" is, per a live log, entirely particle nodes named
+            // evil_smoke — it has no glow/wisp node at all; the spectral look IS
+            // that effect. Its variants are '_local', '_world' and three
+            // '_bottom' copies. Pin '_local': local simulation space keeps the
+            // effect on the familiar, where '_world' would stream off behind the
+            // player as they run and '_bottom' emits at the full-size creature's
+            // feet. Falls back to any evil_smoke node if the names ever change.
+            GlowFromPrefab = "Wraith",
+            GlowChildHints = new[] { "smoke _local", "_local", "evil_smoke" },
+            GlowScale = 0.35f,
             Spirit = 2f },
     };
 
@@ -310,42 +333,95 @@ public static class ArmorVfx
         {
             var parent = ResolvePrefab(def.ParentPrefab);
             if (parent != null)
-            {
-                GameObject firstPs = null;
-                foreach (var tr in parent.GetComponentsInChildren<Transform>(true))
-                {
-                    if (tr == null || tr.gameObject == parent) continue;
-                    bool hasPs = tr.GetComponentInChildren<ParticleSystem>(true) != null;
-                    if (!hasPs) continue;
-                    if (firstPs == null) firstPs = tr.gameObject;
-
-                    var n = tr.name.ToLowerInvariant();
-                    foreach (var hint in def.ChildHints)
-                        if (n.Contains(hint)) { src = tr.gameObject; break; }
-                    if (src != null) break;
-                }
-                // Hints missed: for AnyChildOk auras any particle child beats the
-                // generic fallback (it's the creature's own effect).
-                if (src == null && def.AnyChildOk) src = firstPs;
-
-                if (src != null)
-                    Debug.Log($"[Valcoin][ArmorVfx] {def.Id}: child hunt in '{def.ParentPrefab}' -> '{src.name}'");
-                else
-                {
-                    // Dump the child names once so the hints can be tuned from a
-                    // live log instead of guessing.
-                    var names = new List<string>();
-                    foreach (var tr in parent.GetComponentsInChildren<Transform>(true))
-                        if (tr != null && tr.gameObject != parent && names.Count < 40)
-                            names.Add(tr.name);
-                    Debug.Log($"[Valcoin][ArmorVfx] {def.Id}: no child match in '{def.ParentPrefab}'. "
-                              + "Children: " + string.Join(", ", names.ToArray()));
-                }
-            }
+                src = FindParticleChild(parent, def.ChildHints, def.AnyChildOk, def.Id);
         }
         if (src == null) src = ResolvePrefab(def.Fallback);
 
         _sourceCache[def.Id] = src;
+        return src;
+    }
+
+    /// Find a PARTICLE-ONLY node to graft as a glow: a ParticleSystem sitting
+    /// directly on the node, and no creature geometry anywhere beneath it.
+    ///
+    /// Both tests matter. `GetComponentInChildren<ParticleSystem>` (what
+    /// FindParticleChild uses) is true for any ANCESTOR whose subtree holds
+    /// particles, so it matches a top-level container — on the Wraith that is
+    /// 'Visual', and grafting it cloned an entire second Wraith onto the
+    /// Valkyrie. Requiring particles on the node itself, and rejecting nodes with
+    /// a mesh under them, keeps the pick to a real effect node.
+    ///
+    /// Every candidate is logged, so if the hinted pick is the wrong effect the
+    /// alternatives are visible without another guessing round.
+    public static GameObject FindGlowChild(GameObject donor, string[] hints, string label)
+    {
+        if (donor == null) return null;
+
+        GameObject hinted = null, firstPure = null;
+        var candidates = new List<string>();
+        foreach (var tr in donor.GetComponentsInChildren<Transform>(true))
+        {
+            if (tr == null || tr.gameObject == donor) continue;
+            if (tr.GetComponent<ParticleSystem>() == null) continue;
+            if (tr.GetComponentInChildren<MeshRenderer>(true) != null) continue;
+            if (tr.GetComponentInChildren<SkinnedMeshRenderer>(true) != null) continue;
+
+            if (candidates.Count < 30) candidates.Add(tr.name);
+            if (firstPure == null) firstPure = tr.gameObject;
+            if (hinted == null && hints != null)
+            {
+                var n = tr.name.ToLowerInvariant();
+                foreach (var hint in hints)
+                    if (n.Contains(hint)) { hinted = tr.gameObject; break; }
+            }
+        }
+
+        var pick = hinted != null ? hinted : firstPure;
+        Debug.Log($"[Valcoin][ArmorVfx] {label}: particle-only nodes in '{donor.name}': "
+                  + (candidates.Count > 0 ? string.Join(", ", candidates.ToArray()) : "(none)")
+                  + " -> picked " + (pick != null ? "'" + pick.name + "'" : "NONE"));
+        return pick;
+    }
+
+    /// Find the particle-bearing child of `parent` whose name contains one of
+    /// `hints`. With `anyChildOk`, a miss falls back to the first particle child
+    /// (the creature's own effect beats a generic stand-in). On a total miss the
+    /// child names are dumped so hints can be tuned from a live log rather than
+    /// guessed — the prefab hierarchies aren't visible from source.
+    ///
+    /// Matches containers as well as leaf effect nodes — fine for a child-clone
+    /// familiar, which WANTS the creature's visible effect body. Glow grafts need
+    /// the stricter FindGlowChild above.
+    public static GameObject FindParticleChild(GameObject parent, string[] hints,
+                                               bool anyChildOk, string label)
+    {
+        if (parent == null) return null;
+        GameObject src = null, firstPs = null;
+        foreach (var tr in parent.GetComponentsInChildren<Transform>(true))
+        {
+            if (tr == null || tr.gameObject == parent) continue;
+            if (tr.GetComponentInChildren<ParticleSystem>(true) == null) continue;
+            if (firstPs == null) firstPs = tr.gameObject;
+
+            var n = tr.name.ToLowerInvariant();
+            if (hints != null)
+                foreach (var hint in hints)
+                    if (n.Contains(hint)) { src = tr.gameObject; break; }
+            if (src != null) break;
+        }
+        if (src == null && anyChildOk) src = firstPs;
+
+        if (src != null)
+            Debug.Log($"[Valcoin][ArmorVfx] {label}: child hunt in '{parent.name}' -> '{src.name}'");
+        else
+        {
+            var names = new List<string>();
+            foreach (var tr in parent.GetComponentsInChildren<Transform>(true))
+                if (tr != null && tr.gameObject != parent && names.Count < 40)
+                    names.Add(tr.name);
+            Debug.Log($"[Valcoin][ArmorVfx] {label}: no child match in '{parent.name}'. "
+                      + "Children: " + string.Join(", ", names.ToArray()));
+        }
         return src;
     }
 
@@ -725,7 +801,7 @@ public class ArmorVfxManager : MonoBehaviour
             _seen.Add(key);
 
             // Familiars hover beside the player — parent to the player root
-            // (stable pivot; the offset puts them at the right shoulder, head
+            // (stable pivot; the offset puts them at the left shoulder, head
             // height) rather than the helmet mesh, which would swing with every
             // head turn.
             var parent = p.transform;
@@ -835,6 +911,8 @@ public class ArmorVfxManager : MonoBehaviour
                 l.shadows = LightShadows.None;
             }
 
+            GraftGlow(def, go);
+
             go.SetActive(true);
             if (def.WholeCreature) TuneAnimators(go);
             return go;
@@ -843,6 +921,58 @@ public class ArmorVfxManager : MonoBehaviour
         {
             Debug.LogWarning($"[Valcoin][ArmorVfx] Spawn '{def.Id}' failed: {ex.Message}");
             return null;
+        }
+    }
+
+    // Borrow one creature's glow for another familiar: clone the donor prefab's
+    // glow particle child and parent it at the familiar's origin, stripped to a
+    // pure looping local visual (same treatment a child-clone familiar gets).
+    //
+    // Runs AFTER StripChildHints/TameParticles so neither touches the graft — the
+    // Fallen Valkyrie's own smoke is stripped and its remaining particles scaled
+    // to 0.15, which would have shrunk a borrowed glow to nothing.
+    //
+    // GlowScale is in PLAYER space: the familiar root is already scaled by
+    // def.Scale and the graft inherits that, so divide it back out. GlowScale
+    // 0.35 therefore renders the same size as it does on the Wraith familiar
+    // (whose own def.Scale is 0.35), which is the point of borrowing it.
+    private void GraftGlow(ArmorVfx.Aura def, GameObject go)
+    {
+        if (string.IsNullOrEmpty(def.GlowFromPrefab) || go == null) return;
+        try
+        {
+            var donor = ArmorVfx.ResolvePrefab(def.GlowFromPrefab);
+            if (donor == null)
+            {
+                Debug.LogWarning($"[Valcoin][ArmorVfx] {def.Id}: glow donor "
+                                 + $"'{def.GlowFromPrefab}' not found — no glow grafted.");
+                return;
+            }
+
+            var src = ArmorVfx.FindGlowChild(donor, def.GlowChildHints, def.Id + " glow");
+            if (src == null)
+            {
+                Debug.LogWarning($"[Valcoin][ArmorVfx] {def.Id}: no particle-only node in "
+                                 + $"'{def.GlowFromPrefab}' — no glow grafted.");
+                return;
+            }
+
+            var glow = Instantiate(src, go.transform);
+            glow.name = "vc_glow_" + def.Id;
+            StripToVisual(glow);
+            StripGeometry(glow);   // a glow is particles only — never a body
+            ForceLoop(glow);
+            glow.transform.localPosition = Vector3.zero;
+            glow.transform.localRotation = Quaternion.identity;
+            float inv = def.Scale > 0.0001f ? 1f / def.Scale : 1f;
+            glow.transform.localScale = glow.transform.localScale * (def.GlowScale * inv);
+            glow.SetActive(true);
+            Debug.Log($"[Valcoin][ArmorVfx] {def.Id}: grafted glow from "
+                      + $"'{def.GlowFromPrefab}' child '{src.name}'.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[Valcoin][ArmorVfx] {def.Id}: glow graft failed: {ex.Message}");
         }
     }
 
@@ -963,6 +1093,24 @@ public class ArmorVfxManager : MonoBehaviour
                 for (int i = 0; i < StripTypes.Length; i++)
                     if (n == StripTypes[i]) { Destroy(comp); break; }
             }
+        }
+        catch { }
+    }
+
+    // Belt-and-braces for glow grafts: destroy every mesh, skeleton and animator
+    // in the clone so only particles can render. FindGlowChild already refuses
+    // nodes with geometry under them; this makes "a graft can never drag the
+    // donor's body along" true by construction rather than by hint quality.
+    // ParticleSystemRenderer is a different type and is deliberately untouched.
+    private static void StripGeometry(GameObject go)
+    {
+        try
+        {
+            foreach (var r in go.GetComponentsInChildren<MeshRenderer>(true))         Destroy(r);
+            foreach (var f in go.GetComponentsInChildren<MeshFilter>(true))           Destroy(f);
+            foreach (var s in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))  Destroy(s);
+            foreach (var a in go.GetComponentsInChildren<Animator>(true))             Destroy(a);
+            foreach (var l in go.GetComponentsInChildren<LODGroup>(true))             Destroy(l);
         }
         catch { }
     }

@@ -73,6 +73,9 @@ public static class QuestFlow
                 coins    = quest.Coins,
                 period   = quest.Period,
                 name     = playerName,
+                // Event prizes opt out of the daily allowance (backend 0.10.0+).
+                // An older backend ignores the field and caps as before.
+                capped   = quest.Capped,
             },
             (ok, r, err) =>
             {

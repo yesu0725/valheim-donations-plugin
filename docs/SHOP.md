@@ -208,7 +208,7 @@ it never helps win a fight, even a duel).
 ### `armor_vfx` effect — Familiars (mini flying-creature companions) ✅
 
 Binds a **miniature flying creature** to the buyer's equipped **helmet** — it
-hovers at the player's right shoulder, head height (`ArmorVfx.CompanionOffset`,
+hovers at the player's left shoulder, head height (`ArmorVfx.CompanionOffset`,
 parented to the player root so it doesn't swing with head turns), and the
 helmet gains a matching name suffix. Grew out of a happy accident: the Ghost
 "glow" clone looked like a mini ghost pet, so the whole category pivoted. See

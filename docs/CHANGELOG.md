@@ -20,9 +20,9 @@ For "what is true right now" rather than "what changed", see
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Plugin | **5.19.2** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
-| Backend | **0.9.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
-| Thunderstore package | **5.19.2** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
+| Plugin | **5.20.0** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
+| Backend | **0.10.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
+| Thunderstore package | **5.20.0** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
 > and player changelog all bumped — but no zip was ever uploaded. Its quest
@@ -47,6 +47,7 @@ newer plugin can ask for something an old backend doesn't serve:
 | Plugin needs | Minimum backend | Symptom if too old |
 |---|---|---|
 | Quest rewards (`/api/quests/claim`) | 0.7.0 | Every completed quest 404s — no coins, warning per completion in the server log |
+| Uncapped event prizes (`capped: false`) | 0.10.0 | The field is ignored and the prize is trimmed to the daily allowance — a 100-coin purse pays 8 at most, 0 to a player who already did their dailies |
 | Daily-quest panel line (`quest_daily_*` on `/api/state`) | 0.7.0 | Line hidden (cap reads 0, which the panel treats as "quests disabled") |
 | Exchange-rate callout (`coins_per_usd`) | 0.6.0 | Donate tab reads "Exchange rate unavailable" |
 | Weekly charge cap (`weekly_charge_cap`) | 0.6.0 | Cap silently unenforced — charges never rejected |
@@ -64,6 +65,81 @@ newer plugin can ask for something an old backend doesn't serve:
 > undeployed backend.
 
 ---
+
+## Plugin 5.20.0 / Backend 0.10.0 — ecosystem wallet + uncapped event prizes
+
+Both halves move together here: the plugin gains the API, the backend gains the
+flag that makes its payouts land correctly. **Neither is uploaded/deployed yet** —
+the plugin is on the dedicated server and both test profiles, the backend change
+is still local.
+
+### Ecosystem wallet API (plugin)
+
+`ValcoinWallet` (`valheim-plugin/ValcoinWallet.cs`) is the first sanctioned way
+for a **sibling mod to debit Valcoins**. Until now the only cross-mod path was
+one-way and indirect — a ServerGuide quest sets `VC.Q.<id>`, and this project
+prices it from `valcoin_quests.yaml`, so a sibling can never inflate a payout.
+
+There was no debit path at all, and one could not be faked on the sibling's side:
+the ledger is backend-authoritative, and a local `CoinManager` deduction is
+reverted the next time any backend response syncs a balance (`ShopHandler` and
+`GiftFlow` both call `SetBalance` with the server's number). So the debit has to
+live here.
+
+It is a thin wrapper over endpoints that already existed:
+
+| | Endpoint | Why it fits |
+|---|---|---|
+| `Charge` | `POST /api/spend` | the same idempotent debit the shop uses; the sku is validated by regex, not against a catalog, so an ecosystem sku like `eco_ls_duel_stake` works unchanged |
+| `Credit` | `POST /api/admin/grant` | its own docstring names "event prizes, refunds" as the use case, and the plugin already holds the bearer token it requires |
+
+Guardrails kept: **server-only** (every entry point refuses off the server, so a
+client can never drive its own balance); callers address players **by name**, never
+Steam64, so siblings stay out of identity handling; every ecosystem debit is
+namespaced `eco_` and lands in `spends` alongside shop purchases for audit. It
+sells nothing — it moves currency between players who wagered it, and refunds what
+a cancelled event took. Called by **reflection** from Lost Scrolls II, so donations
+remains an optional soft dependency there.
+
+First consumer: Lost Scrolls II's wagered tournaments and staked duel invites.
+
+### Uncapped event prizes (both halves)
+
+`valcoin_quests.yaml` entries take a new **`capped:`** field. `true` (default, and
+what an older plugin omitting the field sends) is exactly the old behaviour. `false`
+marks an **event** payout — a tournament purse, a bounty reward — which is then
+paid in full and does not consume the player's daily allowance.
+
+**Why this was needed.** `quest_daily_cap` is 8 coins/day and clamps `daily`
+quests to `min(coins, remaining)`. That is right for the login-habit dailies it
+was designed around, and wrong for a prize won by placing first in a tournament:
+a 100-coin purse declared `daily` paid **8 at best, and 0 to a champion who had
+already done their dailies that morning**. `period: once` was cap-exempt but pays
+a given character only once ever, so it could not carry a repeatable prize either.
+The fix separates the two ideas that had been conflated — *"is this the daily
+grind?"* is now its own flag rather than a side effect of `period`.
+
+The mechanism was already there: `quest_claims.counts_toward_cap` and
+`daily_earned()` have excluded rows since the streak bonus landed. Only the
+*decision* changed, from `period == "once"` to
+`period == "once" or not capped`.
+
+**Exempt is not unlimited.** The `UNIQUE(steam64, quest_id, period_key)` dedup
+still applies, so an exempt daily quest pays at most **once per UTC day per quest
+id**. For these payouts that dedup — not the coin cap — is what bounds a
+fabricated report. Worth stating plainly when adding an uncapped entry: the
+per-day ceiling for the whole set is the sum of its `coins` values.
+
+The shipped `valcoin_quests.yaml` template now includes the Lost Scrolls II event
+prizes (`ls_tournament_prize`, `ls_bounty_t1`…`t5`) as uncapped examples.
+
+### Backend
+
+`ClaimRequest.capped: bool = True`. Additive and optional, so a newer backend
+stays safe with an older plugin — but a plugin sending `capped: false` to a
+backend below 0.10.0 has the field silently ignored and the prize capped, which
+is the row added to the compatibility matrix above.
+
 
 ## Backend 0.9.0 — 2026-08-12
 
@@ -163,6 +239,67 @@ One trap worth recording: the exclusion is
 `NULL`, not true, so a naive filter would have dropped every **unmatched
 donation** the moment any account was hidden — exactly the rows an operator most
 needs to see. Covered by a test.
+
+---
+
+## Plugin 5.19.3 — 2026-08-17
+
+Cosmetic familiar changes, both owner-requested. Backend untouched, no config or
+shop-schema change, no compatibility implications.
+
+### Familiars moved to the player's left
+
+`ArmorVfx.CompanionOffset` X flipped `+0.45` → `-0.45`, then widened to `-0.75`.
+Y and Z unchanged, so height and forward position are identical. Every familiar
+reads this one constant (per-familiar `Raise` only adds Y), so all nine moved
+together. The offset is applied in the **player root's** local space — familiars
+parent to the root rather than the helmet mesh, so they stay on the character's
+left instead of swinging with head turns.
+
+### Fallen Valkyrie — smoke stripped, Wraith glow grafted
+
+Her full-size smoke trail read as a grey smudge at `Scale = 0.15`. Removed via
+`StripChildHints = { "smoke" }`, which matches the prefab's `Smoke_local` (×7)
+and `Smoke`. `Spores_World` and `EyeTrail_L/R` deliberately survive.
+
+Replacing it needed new machinery: the Wraith's look is **not** a light, so there
+was no value to copy — `GlowFromPrefab` / `GlowChildHints` / `GlowScale` plus
+`GraftGlow` clone the donor prefab's effect node onto another familiar.
+
+Three things here are worth keeping, all of them learned the hard way:
+
+- **Candidate selection must require particles on the node itself.** The first
+  attempt used `GetComponentInChildren<ParticleSystem>()`, which is true for any
+  **ancestor** whose subtree holds particles. On the Wraith the first such node is
+  `Visual` — its whole visual root — so the graft cloned **an entire second Wraith
+  onto the Valkyrie's body**. `FindGlowChild` now requires `GetComponent`
+  (particles *on* the node) and rejects any node with a `MeshRenderer` or
+  `SkinnedMeshRenderer` beneath it. `StripGeometry` then destroys meshes,
+  skeletons, animators and LOD groups in the clone, so "a graft cannot drag the
+  donor's body along" holds by construction rather than by hint quality.
+- **The Wraith has no glow node.** Its particle-only children are *all* named
+  `evil_smoke` — the spectral look **is** that effect. Variants are `_local`,
+  `_world` and three `_bottom` copies; the hints pin `_local`, because local
+  simulation space keeps the effect on the familiar where `_world` would stream
+  off behind a running player. There is a mild irony in the fix for "remove the
+  smoke" being a different creature's smoke, which is why it's written down here.
+- **Scale is inverted out deliberately.** `GraftGlow` runs *after*
+  `StripChildHints` and `TameParticles` and multiplies by `1/def.Scale`, so
+  `GlowScale` is in **player space**. `0.35` therefore renders the glow at the
+  same size it is on the Wraith familiar (whose own `Scale` is 0.35) — the point
+  of borrowing it. Without the inversion the Valkyrie's 0.15 scale would have
+  shrunk it to nothing.
+
+**Prefab hierarchies are invisible from source, so hints cannot be reasoned out —
+they must be read from a live log.** Both diagnostics print candidate names
+(`particle children:` for strips, `particle-only nodes in '<donor>'` for grafts);
+the two fixes above came from those lines, not from inspection. Expect one
+in-game round trip when touching any hint list.
+
+Also extracted the child-hunt loop from `ResolveSource` into `FindParticleChild`.
+It intentionally still matches containers — a child-clone familiar wants the
+creature's visible effect body — which is exactly why glow grafts needed the
+stricter finder rather than a shared one.
 
 ---
 

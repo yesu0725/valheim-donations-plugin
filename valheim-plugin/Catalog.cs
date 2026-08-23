@@ -132,7 +132,7 @@ shop:
 
   # ---------- Familiars (mini flying-creature companions) ----------
   # armor_vfx binds a miniature flying creature to your equipped helmet - it
-  # hovers at your right shoulder, head height. Each grants feather fall plus
+  # hovers at your left shoulder, head height. Each grants feather fall plus
   # a tiny flat attack bonus (+2/+3 of the creature's damage type - flavor,
   # not power; weapons deal 50-150). `perk` selects the familiar; visuals and
   # stats live in the plugin's ArmorVfx registry. Priced by progression tier.

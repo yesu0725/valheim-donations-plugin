@@ -3,7 +3,23 @@
 Backend deploys to Fly.io. The plugin is deployed by copying the built DLL
 onto the Valheim dedicated server — see [PLUGIN.md](PLUGIN.md) for that half.
 
-## Live status (2026-07-10)
+## Live status (2026-08-23)
+
+Backend **0.10.0** is live (deployed 2026-08-23 from backend commit `05fb198`).
+Everything below still holds; the notes are from the 2026-07-10 rollout.
+
+> **The "401 = configured" probe does not apply to Ko-fi.** Its route signature
+> is `data: str = Form(...)`, so an empty POST fails form validation and returns
+> **422** before any signature check runs. 422 is the healthy answer there;
+> 401 is the healthy answer for the others.
+
+> **Fly's "app is not listening on 0.0.0.0:8080" warning during deploy is
+> usually spurious.** The smoke check runs before uvicorn finishes binding — the
+> logs show the proxy error a second or two *before* "Uvicorn running on
+> http://0.0.0.0:8080". Confirm with `curl /health` rather than trusting the
+> warning; if `/health` answers 200, the deploy is fine.
+
+## Rollout notes (2026-07-10)
 
 - **App:** `valheim-donations` → `https://valheim-donations.fly.dev`
 - **Region:** `sin`, 1 machine, `min_machines_running = 1` (always awake for webhooks)

@@ -32,6 +32,25 @@ public static class QuestCatalog
         public string Name;      // human label used in panel/toast messages
         public int    Coins;
         public string Period = "daily";   // once | daily
+
+        /// Does this payout come out of the daily-grind allowance?
+        ///
+        /// true (default) = the original behaviour: trimmed to fit
+        /// `quest_daily_cap` and counted against it. Right for the login-habit
+        /// dailies the cap was designed around.
+        ///
+        /// false = an EVENT prize — a tournament purse, a bounty reward, a duel
+        /// stake. Paid in full and doesn't consume anyone's daily allowance,
+        /// because it was earned by winning something rather than by showing up.
+        /// A 100-coin prize squeezed through an 8/day allowance pays 8 at best.
+        ///
+        /// Exempt does not mean unlimited: the per-period dedup still applies, so
+        /// an exempt daily quest pays at most once per UTC day per quest id. That
+        /// dedup is what bounds a fabricated report for these.
+        ///
+        /// Defaults true so an existing valcoin_quests.yaml behaves exactly as
+        /// before, and so an older backend (which ignores the field) is safe.
+        public bool   Capped = true;
     }
 
     public static Dictionary<string, Quest> Items { get; private set; } = new Dictionary<string, Quest>();
@@ -84,6 +103,12 @@ public static class QuestCatalog
 #   coins:   payout. Daily quests are clamped by the backend's per-day cap, so
 #            the pool below deliberately sums to more than a player can earn.
 #   period:  daily = once per UTC day · once = a single time per character
+#   capped:  false = exempt from the daily cap. Use it for EVENT prizes
+#            (tournament purses, bounty rewards) — a 100-coin prize squeezed
+#            through an 8/day allowance pays 8 at best. Exempt payouts are paid
+#            in full and don't eat anyone's daily allowance. Defaults to true.
+#            Exempt is not unlimited: a daily quest still pays at most once per
+#            UTC day, which is what bounds it instead of the coin cap.
 #
 # The backend is the only authority on whether a report actually pays — this
 # file just prices the quests. Edit and restart the server to apply changes.
@@ -120,6 +145,48 @@ quests:
     name: ""Forge a Bond""
     coins: 5
     period: daily
+
+  # ---------- Event prizes (uncapped) ----------
+  # Paid by sibling mods for winning something, not for logging in, so they sit
+  # outside the daily allowance. Delete any you don't run.
+
+  # Lost Scrolls II — Valcoin tournament champion's purse.
+  ls_tournament_prize:
+    name: ""Tournament Champion""
+    coins: 100
+    period: daily
+    capped: false
+
+  # Lost Scrolls II — bounty hunting, one entry per tier.
+  ls_bounty_t1:
+    name: ""Bounty Answered (Marked)""
+    coins: 5
+    period: daily
+    capped: false
+
+  ls_bounty_t2:
+    name: ""Bounty Answered (Hunted)""
+    coins: 10
+    period: daily
+    capped: false
+
+  ls_bounty_t3:
+    name: ""Bounty Answered (Wanted)""
+    coins: 15
+    period: daily
+    capped: false
+
+  ls_bounty_t4:
+    name: ""Bounty Answered (Dread)""
+    coins: 25
+    period: daily
+    capped: false
+
+  ls_bounty_t5:
+    name: ""Bounty Answered (Accursed)""
+    coins: 40
+    period: daily
+    capped: false
 ");
             Debug.Log($"[Valcoin] Created quest catalog template at {QuestPath}.");
         }
@@ -166,6 +233,12 @@ quests:
                 case "period": current.Period = value.ToLowerInvariant(); break;
                 case "coins":
                     if (int.TryParse(value, out var coins)) current.Coins = coins;
+                    break;
+                case "capped":
+                    // Anything that isn't an explicit "false" stays capped — a
+                    // typo must never silently uncap a payout.
+                    current.Capped = !string.Equals(value.Trim(), "false",
+                        StringComparison.OrdinalIgnoreCase);
                     break;
             }
         }

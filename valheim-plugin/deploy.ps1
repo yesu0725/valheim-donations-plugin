@@ -1,4 +1,4 @@
-# Build the plugin and deploy the DLL to the TEST r2modman profile ONLY.
+# Build the plugin and deploy the DLL to the TEST Gale profile ONLY.
 # Deploys into a Thunderstore-manager-style subfolder
 # (BepInEx/plugins/TaegukGaming-Valheim_Donations/), matching how every other
 # mod on this profile is organized and how the Thunderstore package itself
@@ -12,19 +12,22 @@ $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dll  = Join-Path $here 'bin\Release\ValheimDonationSystem.dll'
 
-# THE ONLY DEPLOY DESTINATION - the "Hearthbound Valheim - Test" r2modman
-# profile (owner's instruction, 2026-08-07: deploy here and DO NOT TOUCH any
-# other profile).
+# THE ONLY DEPLOY DESTINATION - the "HB Test" profile in Gale
+# (owner's instruction, 2026-08-07: deploy to the test profile and DO NOT TOUCH
+# any other profile; 2026-08-17: moved off r2modman to Gale, which stores
+# profiles under %APPDATA%\com.kesomannen.gale\valheim\profiles\).
 #
 # Deliberately NOT deployed to any more, leave these alone:
 #   - the live/played client profile (currently "HB Server", previously
 #     "Hearthbound Server" / "Hearthbound Valheim" - it keeps getting renamed)
+#   - the old r2modman profiles, now superseded
+#     (%APPDATA%\r2modmanPlus-local\Valheim\profiles\)
 #   - the dedicated server
 #     (C:\Program Files (x86)\Steam\steamapps\common\Valheim dedicated server)
 # Promoting a tested build to those is a manual, deliberate step now - not
 # something a routine build should do behind your back.
 $pluginFolders = @(
-  'C:\Users\yesu0725\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Hearthbound Valheim - Test\BepInEx\plugins'
+  'C:\Users\yesu0725\AppData\Roaming\com.kesomannen.gale\valheim\profiles\HB Test\BepInEx\plugins'
 )
 $subfolderName = 'TaegukGaming-Valheim_Donations'
 
@@ -38,14 +41,14 @@ if (-not (Test-Path $dll)) { throw "DLL not found: $dll" }
 
 foreach ($pluginFolder in $pluginFolders) {
   # Hard failure, never a silent skip. This used to warn-and-continue, which is
-  # exactly how a renamed r2modman profile left the target on a weeks-old DLL
-  # while the deploy still looked green - twice, costing whole debugging
-  # sessions chasing "fixes that don't work". With a single destination a skip
-  # means NOTHING was deployed, so it must be loud. If the profile was renamed,
-  # update the path above.
+  # exactly how a renamed profile left the target on a weeks-old DLL while the
+  # deploy still looked green - twice, costing whole debugging sessions chasing
+  # "fixes that don't work". With a single destination a skip means NOTHING was
+  # deployed, so it must be loud. If the profile was renamed, update the path
+  # above.
   if (-not (Test-Path $pluginFolder)) {
     throw "Deploy target missing: $pluginFolder`n" +
-          "  Was the r2modman profile renamed? Fix the path in deploy.ps1 - nothing was deployed."
+          "  Was the Gale profile renamed, or is Gale installed elsewhere? Fix the path in deploy.ps1 - nothing was deployed."
   }
 
   # Clean up a stray flat copy from older deploy.ps1 versions — leaving both

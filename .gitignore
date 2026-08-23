@@ -5,6 +5,11 @@ backend/
 valheim-plugin/libs/
 *.dll
 
+# --- Thunderstore packaging output (zips are built on demand, per release) ---
+# The package METADATA under Thunderstore files/<pkg>/ is tracked; only the
+# built archives are not. Matches the sibling Lost Scrolls II repo.
+Thunderstore files/*.zip
+
 # --- .NET build output ---
 valheim-plugin/bin/
 valheim-plugin/obj/

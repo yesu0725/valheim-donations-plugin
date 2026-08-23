@@ -65,7 +65,7 @@ dedicated server**, or remote clients see blank thumbnails.
 |---------------|--------------------------------------------------------------------------|--------|
 | `grant_item`  | Spawns weekly-capped, optionally boss-gated item stacks at the buyer's feet | built  |
 | `add_charges` | Credits a backend-tracked consumable charge pool (the shipped **Soulkeeper Charm** — on death skip the skill drain + Valkyrie tombstone carry + tomb-area creature repel). Capped at **10 charges/player/week** via `weekly_charge_cap` | built  |
-| `armor_vfx`   | Binds a mini flying-creature **Familiar** to the equipped helmet (hovers at the right shoulder) + matching name suffix; broadcast via ZDO so others see it. Also grants **feather fall** + a **small flat attack bonus** while equipped | built |
+| `armor_vfx`   | Binds a mini flying-creature **Familiar** to the equipped helmet (hovers at the left shoulder) + matching name suffix; broadcast via ZDO so others see it. Also grants **feather fall** + a **small flat attack bonus** while equipped | built |
 | `grant_perk`  | Flips a passive `PerkManager` flag — generic mechanism, but no SKU ships one today | supported |
 
 > **Removed cosmetics:** `donor_badge` / `chat_title` / `companion_flair` /

@@ -74,15 +74,19 @@ played**. A worked example (2026-07-20):
   deploy time (see the gotcha below). This class of bug had bitten twice before
   it was caught here.
 
-**How to find the profile that's actually running** (r2modman rewrites
+**How to find the profile that's actually running** (the mod manager rewrites
 `LogOutput.log` on each modded launch, so the freshest log wins):
 
 ```bash
-base="$APPDATA/r2modmanPlus-local/Valheim/profiles"
+base="$APPDATA/com.kesomannen.gale/valheim/profiles"
 for p in "$base"/*/; do
   echo "$(stat -c '%y' "$p/BepInEx/LogOutput.log" 2>/dev/null)  $(basename "$p")"
 done | sort   # newest = the profile you're playing
 ```
+
+Profiles moved from r2modman (`$APPDATA/r2modmanPlus-local/Valheim/profiles`)
+to **Gale** on 2026-08-17; check the old path too if a profile seems to have
+vanished.
 
 Then check that profile's `BepInEx/config/valcoin_config.json` for placeholder
 values, and **restart the game** after fixing it — the plugin reads config once
@@ -95,8 +99,9 @@ edit.
 > its config untouched.
 >
 > **Changed 2026-08-07 — this class of failure is now fatal, not silent.**
-> `deploy.ps1` deploys to **one** destination, the test profile
-> (`Hearthbound Valheim - Test`), and **throws** if that folder is missing
+> `deploy.ps1` deploys to **one** destination, the test profile (`HB Test` in
+> Gale; was `Hearthbound Valheim - Test` in r2modman until 2026-08-17), and
+> **throws** if that folder is missing
 > instead of printing `SKIP (missing folder)` and continuing. The live/played
 > profile and the dedicated server are deliberately **not** deploy targets any
 > more — promoting a tested build to them is a manual step. The old

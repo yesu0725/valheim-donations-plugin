@@ -1,0 +1,10 @@
+{
+  "name": "Valheim_Donations",
+  "description": "Valcoin donation economy for dedicated servers: Ko-fi/Patreon/PayMongo donations become in-game currency, spendable in a configurable shop via one in-game panel (press F4). Requires the plugin client-side too — no chat commands.",
+  "version_number": "5.20.0",
+  "website_url": "https://github.com/yesu0725/valheim-donations-plugin",
+  "dependencies": [
+    "denikson-BepInExPack_Valheim-5.4.2333",
+    "ValheimModding-JsonDotNET-13.0.4"
+  ]
+}

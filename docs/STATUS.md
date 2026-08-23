@@ -12,7 +12,20 @@ plugin↔backend compatibility matrix.
   Shop now ships a **Soulkeeper Charm** consumable (backend charge ledger +
   in-game skill-save + Valkyrie tombstone carry); cosmetic badge/title/flair
   perks were dropped.
-- **Backend version:** `0.7.0` — **deployed to Fly.io 2026-08-08** and verified
+- **Backend version:** `0.10.0` — **deployed to Fly.io 2026-08-23** and verified
+  live: `/openapi.json` reports `0.10.0` and `ClaimRequest` carries
+  `capped` (`boolean`, `default: true`). Adds the opt-out from the daily quest
+  cap for event prizes. Committed as `05fb198` in the backend repo before the
+  deploy, so the running image traces to a real commit. `init_db()` ran clean
+  against the existing volume, and the dedicated server's GrantPoller was
+  already polling `/api/grants/pending` with 200s within seconds of the restart.
+  Webhook regression probes after the deploy: patreon 401, paymongo 401 (both
+  configured & verifying), paypal 503 (removed 2026-08-11, expected), kofi 422 —
+  Ko-fi takes `data: str = Form(...)`, so an empty probe fails form validation
+  before the signature check; 422 is correct for that route and the "401 means
+  configured" rule in DEPLOYMENT.md does not apply to it.
+  Pushed to `origin/main` 2026-08-23.
+- **Older note, kept for the deployment history:** `0.7.0` — **deployed to Fly.io 2026-08-08** and verified
   live: `/openapi.json` reports `0.7.0`, `POST /api/quests/claim` and
   `POST /api/admin/quest-reset` are present, and `/api/state` carries the four
   `quest_*` fields. Adds ServerGuide quest rewards (`quest_claims` table, daily
@@ -30,7 +43,21 @@ plugin↔backend compatibility matrix.
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.19.2` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.20.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+  **5.20.0** adds the **ecosystem wallet API** (`ValcoinWallet` — the first
+  sanctioned way for a sibling mod to *debit* Valcoins, used by Lost Scrolls II's
+  wagered tournaments and duel invites) and an **uncapped quest flag**
+  (`capped: false` in `valcoin_quests.yaml`, needs backend **0.10.0**) so event
+  prizes are not trimmed by the 8-coin daily allowance. **Deployed to the
+  dedicated server + both test profiles; NOT uploaded to Thunderstore, and the
+  backend change is NOT yet on Fly.io.**
+  **5.19.3** is cosmetic only: familiars hover at the player's **left** shoulder
+  (`ArmorVfx.CompanionOffset` X `-0.75`), and the Fallen Valkyrie's smoke is
+  stripped in favour of the Wraith's glow, grafted via the new
+  `GlowFromPrefab`/`GraftGlow` path. **Verified in-game: the left-side move and
+  the smoke removal. Not yet eyeballed: which Wraith effect variant the glow
+  settles on** — the graft is pinned to `evil_smoke _local` after a first attempt
+  cloned the Wraith's whole `Visual` root onto her. Backend unaffected.
   **5.19.2** fixes two coin-integrity bugs: the shop/gift pre-check treated a
   player missing from the local cache as having 0 coins and refused them their
   own money, and a failed balance-file write still acked the grant to the backend
@@ -75,8 +102,10 @@ plugin↔backend compatibility matrix.
   carried across, and the piece is re-equipped so the familiar comes straight
   back) and **shows the familiar on the crafting panel's Upgrade view** before
   you spend the materials. Verified in-game 2026-08-07. Backend unchanged.
-  **As of 2026-08-07 `deploy.ps1` deploys to ONE destination only — the
-  `Hearthbound Valheim - Test` r2modman profile.** The played profile
+  **As of 2026-08-07 `deploy.ps1` deploys to ONE destination only — the test
+  profile, now `HB Test` in **Gale** (`%APPDATA%\com.kesomannen.gale\valheim\
+  profiles\`); it was `Hearthbound Valheim - Test` in r2modman until the
+  2026-08-17 move.** The played profile
   (renamed again, now **`HB Server`**) and the dedicated server are no longer
   deploy targets; promoting a tested build to them is a deliberate manual step.
   A missing target folder now **throws** instead of printing `SKIP` — see

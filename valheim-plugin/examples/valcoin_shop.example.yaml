@@ -77,7 +77,7 @@ shop:
 
   # ---------- Familiars (mini flying-creature companions) ----------
   # armor_vfx binds a miniature flying creature to your equipped helmet - it
-  # hovers at your right shoulder, head height. Purely cosmetic - no stats.
+  # hovers at your left shoulder, head height. Purely cosmetic - no stats.
   # `perk` selects the familiar; the visuals live in the plugin's ArmorVfx
   # registry. Priced by progression tier.
   familiar_bat:
