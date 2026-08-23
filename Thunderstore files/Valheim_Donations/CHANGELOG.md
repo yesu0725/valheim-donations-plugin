@@ -1,5 +1,18 @@
 # Changelog
 
+## 5.20.0
+
+Mostly a groundwork release — but one change you will notice if your server runs event prizes.
+
+- **Event prizes are no longer trimmed by the daily cap.** Valcoins earned from daily quests are still capped at 8 a day, which is what that cap is for. But a prize you *won* — a tournament purse, a bounty reward — was being squeezed through the same allowance, so a 100-coin prize paid 8 at best, and nothing at all if you had already done your dailies that morning. Those payouts are now paid in full and no longer eat into your daily quest allowance.
+- **Other mods can now charge and pay Valcoins.** This is what makes staked events possible: a companion mod can take an entry fee, refund it if the event is cancelled, and pay out a purse. It stays server-side and it sells nothing new — no perk, item or advantage became purchasable. First used by Lost Scrolls II's wagered tournaments and duel invites.
+
+**For server operators:**
+
+- Needs backend **0.10.0** — mark a quest `capped: false` in `valcoin_quests.yaml` to exempt it from the daily allowance. Without the newer backend the flag is ignored and prizes are capped as before.
+- The shipped `valcoin_quests.yaml` template now includes the Lost Scrolls II event prizes (`ls_tournament_prize`, `ls_bounty_t1`…`t5`) as uncapped examples.
+- Exempt does **not** mean unlimited: each quest id still pays at most once per UTC day, which is what bounds those payouts now that the coin cap doesn't.
+
 ## 5.19.3
 
 - **Familiars now fly at your left shoulder instead of your right.** Same height, same distance — just the other side, where they sit clear of your shield arm and your camera. Applies to all nine familiars.
