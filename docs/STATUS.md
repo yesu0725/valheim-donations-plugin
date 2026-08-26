@@ -73,8 +73,11 @@ plugin↔backend compatibility matrix.
   wagered tournaments and duel invites) and an **uncapped quest flag**
   (`capped: false` in `valcoin_quests.yaml`, needs backend **0.10.0**) so event
   prizes are not trimmed by the 8-coin daily allowance. **Deployed to the
-  dedicated server + both test profiles; NOT uploaded to Thunderstore, and the
-  backend change is NOT yet on Fly.io.**
+  dedicated server + both test profiles, and PUBLISHED to Thunderstore on
+  2026-08-23** (verified against the Thunderstore API 2026-08-25 — this line
+  previously claimed it was never uploaded, which was wrong). **5.20.0 is
+  therefore what every player's client is running**, and the backend change went
+  to Fly.io the same day (see the backend section above).
   **5.19.3** is cosmetic only: familiars hover at the player's **left** shoulder
   (`ArmorVfx.CompanionOffset` X `-0.75`), and the Fallen Valkyrie's smoke is
   stripped in favour of the Wraith's glow, grafted via the new
