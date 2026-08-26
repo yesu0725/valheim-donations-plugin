@@ -43,7 +43,15 @@ plugin↔backend compatibility matrix.
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.21.1` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.21.2` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+  **5.21.2** stops a `period: once` quest reporting a reset it does not have
+  ("already claimed today - resets in 7h 16m", printed from the daily timer for
+  every quest alike). Server-side only. Diagnosed alongside a `vc_welcome` payout
+  that appeared to pay nothing: it was **not** a bug and **not** the daily cap -
+  three players claimed that one-time quest while it was priced at **30**, before
+  the payout was raised to 300, and a one-time claim cannot be re-opened. The cap
+  applies to `period: daily` quests only, verified against the ledger (300 paid in
+  full on a day the same player's dailies were trimmed to exactly 8).
   **5.21.1** ends the two-ledger split that let the shop refuse a player holding
   **17,272** Valcoins by telling them they had **2**. `coin_balances.json` is a
   cache that accumulates deltas from an assumed zero and had not been written in

@@ -119,7 +119,29 @@ public static class QuestFlow
             case "already_claimed":
                 // Quiet on purpose. Re-completing a daily is normal play, not a
                 // mistake worth interrupting anyone over.
-                reply($"{quest.Name} — already claimed today. Resets in {r.resets_in}.");
+                //
+                // But say the RIGHT thing: a `period: once` quest has no reset, and
+                // the old text said "already claimed today ... resets in 7h 16m" for
+                // every quest alike, inventing a cooldown that does not exist. The
+                // reset field the backend returns is the DAILY one; it is meaningless
+                // for a one-time quest, and printing it made a permanently-claimed
+                // quest look like a broken timer.
+                if (quest.Period == "once")
+                {
+                    reply($"{quest.Name} — already claimed. This is a one-time quest; "
+                          + "it doesn't come back.");
+                    // Worth a server-side line: a one-time quest being re-reported is
+                    // normally harmless, but it is also what an operator sees when a
+                    // payout was raised AFTER players had already banked the old
+                    // amount. They cannot claim the difference — the id is spent —
+                    // so the operator has to settle it by hand if they want to.
+                    Debug.Log($"[Valcoin] one-time quest '{quest.Id}' re-reported by {playerName} "
+                              + $"(already claimed; current price {quest.Coins}). Nothing paid.");
+                }
+                else
+                {
+                    reply($"{quest.Name} — already claimed today. Resets in {r.resets_in}.");
+                }
                 break;
 
             case "cap_reached":

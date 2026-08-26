@@ -20,9 +20,9 @@ For "what is true right now" rather than "what changed", see
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Plugin | **5.21.1** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
+| Plugin | **5.21.2** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
 | Backend | **0.10.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
-| Thunderstore package | **5.21.1** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
+| Thunderstore package | **5.21.2** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
 > and player changelog all bumped — but no zip was ever uploaded. Its quest
@@ -63,6 +63,45 @@ newer plugin can ask for something an old backend doesn't serve:
 > `/openapi.json`'s version — that same trap cost a debugging round-trip when
 > the exchange-rate callout appeared to be broken client-side but was really an
 > undeployed backend.
+
+---
+
+## Plugin 5.21.2 — a one-time quest is not on a timer
+
+Backend unaffected. **Server-side only** — `QuestFlow` runs in the server's RPC
+handler, so only the server's DLL matters; clients need no update.
+
+`QuestFlow.Announce` printed one string for every `already_claimed` answer:
+
+```
+{name} — already claimed today. Resets in {resets_in}.
+```
+
+`resets_in` is the backend's **daily** reset. For a `period: once` quest there
+is no reset at all, so a player who re-completed a one-time quest was told it
+would come back in a few hours. It never would. Reported as "there is no
+cooldown for this quest, this shouldn't be" — and the report was right: the
+cooldown was fiction invented by this line. It now branches on `quest.Period`
+and says the quest is one-time and already claimed.
+
+Also logs server-side when a one-time quest is re-reported, naming its current
+price. That is the operator-visible symptom of the situation below.
+
+> **What this does NOT fix, because it isn't a bug.** The report that prompted
+> it was `vc_welcome` (300 coins, `period: once`) paying nothing. The ledger
+> shows why: three players claimed it on 2026-08-08, 08-11 and 08-16 **when it
+> was priced at 30**, and the payout was raised to 300 afterwards. A one-time
+> claim is spent for good, so they can never claim the difference; a player who
+> first completed it on 08-25, after the raise, received the full 300. Raising
+> the price of a `once` quest only ever affects players who have not yet claimed
+> it — settle the difference for the others by hand if you want them made whole.
+>
+> **It was not the daily cap either.** On 2026-08-25 one player took 2
+> (`daily_horn`) + 300 (`vc_welcome`) + 6 (`daily_lord`) against an 8-coin daily
+> allowance: the 300 passed untouched while the two dailies summed to exactly 8.
+> The backend already applies the cap to `period: daily` quests only, so
+> one-time quests are exempt by construction — no `capped: false` needed on
+> them, and none of the `gospel_*` one-time quests are at risk either.
 
 ---
 

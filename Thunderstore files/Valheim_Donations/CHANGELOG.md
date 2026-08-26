@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.21.2
+
+- **One-time quests no longer claim to reset.** Finishing a one-time quest you had already completed answered *"already claimed today — resets in 7h 16m"*, which described a cooldown that does not exist: a one-time quest never comes back. The reset time was the daily-quest timer, printed by mistake for every quest alike. It now says plainly that the quest is one-time and already claimed.
+
+*Message wording only — no coins, prices, caps or quests changed. Server-side; players need not update.*
+
 ## 5.21.1
 
 - **The shop no longer refuses coins you actually have — for real this time.** The shop was checking your balance against a file on the server instead of the donation ledger that holds your coins. That file only learned a balance by adding up what it happened to see, starting from zero for anyone it had never recorded — so a player with thousands of Valcoins could finish one 2-coin daily quest and be told they had exactly 2, and refused a purchase on the spot. Your balance is now read from one place only: the same ledger the panel shows you. Same fix for gifting and for staked events.
