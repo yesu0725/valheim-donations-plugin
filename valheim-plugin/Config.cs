@@ -18,6 +18,12 @@ public static class Config
     public static bool   WelcomeEnabled { get; private set; } = true;
     public static string WelcomeMessage { get; private set; }   // null → auto
 
+    // The "Donations" button on the player inventory screen (InventoryMenuButton).
+    // On by default -- it is the only discoverable way into the panel for a player
+    // who never learns the F4 hotkey. Operators who already advertise the hotkey,
+    // or whose inventory top edge is crowded by other mods, can turn it off.
+    public static bool   InventoryButtonEnabled { get; private set; } = true;
+
     // Soulkeeper Phase 2 (prototype): after a warded death, the Valkyrie picks
     // the player up at the spawn point (20s after respawn) and flies them the
     // real route to their tombstone. This flag gates that cutscene; off (or on
@@ -57,6 +63,8 @@ public static class Config
                     WelcomeEnabled = (bool)json["welcome_message_enabled"];
                 if (json["welcome_message"] != null)
                     WelcomeMessage = (string)json["welcome_message"];
+                if (json["inventory_button_enabled"] != null)
+                    InventoryButtonEnabled = (bool)json["inventory_button_enabled"];
                 if (json["valkyrie_carry_visual"] != null)
                     ValkyrieCarryVisual = (bool)json["valkyrie_carry_visual"];
             }
@@ -72,6 +80,7 @@ public static class Config
   ""codex_toggle_key"": ""F4"",
   ""welcome_message_enabled"": true,
   ""welcome_message"": null,
+  ""inventory_button_enabled"": true,
 
   ""valkyrie_carry_visual"": true
 }

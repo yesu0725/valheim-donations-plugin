@@ -115,20 +115,48 @@ public class DonationPanel : MonoBehaviour
 
     // ─── lifecycle ────────────────────────────────────────────────────────
 
+    // The single live panel (one per client, spawned in Plugin.SpawnUiWhenZnetReady).
+    // Exposed so UI entry points outside this class -- the inventory-screen button in
+    // InventoryMenuButton.cs -- can open it without owning a reference.
+    public static DonationPanel Instance { get; private set; }
+
+    // Deferred open, armed by RequestOpen(). The panel refuses to draw while the
+    // inventory is up (see OnGUI), so an open asked for FROM the inventory screen
+    // has to wait for that screen to actually go away -- Hide() isn't instant.
+    private float _openRequestUntil;
+    private const float OpenRequestGraceSeconds = 2f;
+
     private void Awake()
     {
         if (!string.IsNullOrEmpty(Config.CodexToggleKey)
             && Enum.TryParse<KeyCode>(Config.CodexToggleKey, true, out var k))
             _toggleKey = k;
 
+        Instance = this;
         RpcLayer.OnPanelMessage += OnServerMessage;
         DontDestroyOnLoad(gameObject);
     }
 
     private void OnDestroy()
     {
+        if (Instance == this) Instance = null;
         RpcLayer.OnPanelMessage -= OnServerMessage;
         DonationUiState.PanelOpen = false;
+    }
+
+    // Ask for the panel to open as soon as the screen is clear. Safe to call from a
+    // Unity UI click handler in the same frame the inventory is dismissed: the
+    // request is honoured in Update() once nothing else owns the screen, and lapses
+    // after a short grace period if something (a menu, the map) stays up instead.
+    public static void RequestOpen()
+    {
+        var panel = Instance;
+        if (panel == null)
+        {
+            Debug.LogWarning("[Valcoin] Donation panel isn't spawned yet; ignoring open request.");
+            return;
+        }
+        panel._openRequestUntil = Time.realtimeSinceStartup + OpenRequestGraceSeconds;
     }
 
     private bool _wasOpen;
@@ -136,6 +164,16 @@ public class DonationPanel : MonoBehaviour
     private void Update()
     {
         if (Input.GetKeyDown(_toggleKey)) Toggle();
+
+        if (_openRequestUntil > 0f)
+        {
+            if (Time.realtimeSinceStartup > _openRequestUntil) _openRequestUntil = 0f;
+            else if (ScreenIsClear())
+            {
+                _openRequestUntil = 0f;
+                if (!_open) Toggle();
+            }
+        }
 
         if (_open)
         {
@@ -151,6 +189,14 @@ public class DonationPanel : MonoBehaviour
 
         if (_open != _wasOpen) { DonationUiState.PanelOpen = _open; _wasOpen = _open; }
     }
+
+    // Nothing else owns the screen: no game menu, no inventory, no map. Both the
+    // "should I still be drawing?" check in OnGUI and the deferred open in Update
+    // read this, so they can never disagree about what counts as blocked.
+    private static bool ScreenIsClear()
+        => !Menu.IsVisible()
+           && !(InventoryGui.instance != null && InventoryGui.IsVisible())
+           && !(Minimap.instance != null && Minimap.IsOpen());
 
     private void Toggle()
     {
@@ -496,8 +542,7 @@ public class DonationPanel : MonoBehaviour
         if (!_open) return;
         if (!_stylesReady) InitStyles();
 
-        if (Menu.IsVisible() || (InventoryGui.instance != null && InventoryGui.IsVisible())
-            || (Minimap.instance != null && Minimap.IsOpen()))
+        if (!ScreenIsClear())
         {
             _open = false; return;
         }

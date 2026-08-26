@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.21.0
+
+- **There is now a Donations button on your inventory screen.** F4 still opens the panel and always will, but a hotkey nobody told you about is not something you can discover — and that panel is the only way into donating, the shop, gifting and the patron board. The button sits with the others at the top of your inventory, styled like the game's own, so the feature is findable without anyone having to tell you the key. On servers running Lost Scrolls II it sits directly under **Rankings**; on servers without it, alone at the top centre.
+
+**For server operators:**
+
+- On by default. Set `"inventory_button_enabled": false` in `valcoin_config.json` to hide it (existing config files keep the button — the key defaults to on when absent).
+- Client-side only, and no new dependency: the button is a clone of the inventory's own "Take All" button, and its position is read from the Lost Scrolls II row at runtime by name. That mod being absent, disabled or updated cannot break it.
+
 ## 5.20.0
 
 Mostly a groundwork release — but one change you will notice if your server runs event prizes.

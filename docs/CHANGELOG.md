@@ -20,9 +20,9 @@ For "what is true right now" rather than "what changed", see
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Plugin | **5.20.0** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
+| Plugin | **5.21.0** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
 | Backend | **0.10.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
-| Thunderstore package | **5.20.0** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
+| Thunderstore package | **5.21.0** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
 > and player changelog all bumped — but no zip was ever uploaded. Its quest
@@ -63,6 +63,53 @@ newer plugin can ask for something an old backend doesn't serve:
 > `/openapi.json`'s version — that same trap cost a debugging round-trip when
 > the exchange-rate callout appeared to be broken client-side but was really an
 > undeployed backend.
+
+---
+
+## Plugin 5.21.0 — inventory-screen entry point into the panel
+
+Backend unaffected; no minimum backend version.
+
+**A "Donations" button on the player inventory screen**
+([InventoryMenuButton.cs](../valheim-plugin/InventoryMenuButton.cs)). The panel
+was reachable only by F4, and F4 is the *only* input path into the whole system
+— there are no chat or console commands. A hotkey nobody is told about is not
+discoverable, so a player who never reads the welcome line had no way to learn
+the system exists. The button is a **clone of the inventory's own "Take All"
+button**, so it inherits vanilla styling with no authored assets — the same
+technique Lost Scrolls II uses for its row, which is what makes the two mods'
+buttons read as one menu rather than two.
+
+**Positioned by reading, not by copying.** It sits one row below Lost Scrolls
+II's "Rankings" button, found by GameObject name (`LSII_RankingsButton`) — no
+assembly reference, no soft dependency, nothing to break if that mod is absent,
+disabled or updated. `DonationButtonAnchor` re-reads that button's live anchors
+and size in `LateUpdate` and places itself exactly one button-plus-gap below.
+Re-reading each frame rather than placing once is deliberate: **both mods add
+their buttons from a Postfix on the same `InventoryGui.Show` call, and nothing
+defines which of the two Harmony postfixes runs first** — a one-shot placement
+would leave the button in its no-Lost-Scrolls fallback position (top centre,
+overlapping "Tournaments", which is also centred) for a whole inventory session
+on any load where we happened to go first. It also picks up a live change to
+that row's operator-configurable offset for free. The cost is one cached
+`Transform.Find` per frame, and only while the inventory is open — InventoryGui
+deactivates the hierarchy when it hides, which stops the tick entirely.
+
+**Opening is a deferred request, not a direct call.** The panel refuses to draw
+while the inventory is up (`DonationPanel.OnGUI`), so a click that opened it
+immediately would only close it again. The handler hides the inventory and calls
+the new `DonationPanel.RequestOpen()`, which arms a 2-second window; `Update()`
+takes it the moment nothing else owns the screen. That "nothing else owns the
+screen" test was pulled out of `OnGUI` into a shared `ScreenIsClear()` so the
+draw check and the open check can never disagree about what counts as blocked.
+
+- New config key `inventory_button_enabled` (default **true**) in
+  `valcoin_config.json`. Absent from an existing config file means on.
+- New `libs/` requirements: `UnityEngine.UI.dll`, `UnityEngine.UIModule.dll`,
+  `Unity.TextMeshPro.dll` — all from `valheim_Data/Managed/`, needed only by
+  this file. See [PLUGIN.md](PLUGIN.md#required-dlls-in-libs).
+- Client-side only. The patch is inert on a dedicated server, which has no
+  `InventoryGui`.
 
 ---
 

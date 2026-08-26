@@ -45,6 +45,6 @@ This mod is **free to use as is**. Voluntary support is appreciated.
 
 ---
 
-**Version:** 5.20.0
+**Version:** 5.21.0
 **Source / issues:** https://github.com/yesu0725/valheim-donations-plugin
 **Backend (required, self-hosted):** https://github.com/yesu0725/valheim-donations-backend

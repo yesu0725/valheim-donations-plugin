@@ -29,7 +29,11 @@ they own those perks. It doesn't parse or intercept commands.
 ## The in-game panel (F4) ✅
 
 There is **one** donation panel, opened with **F4** (configurable via
-`codex_toggle_key`), built as
+`codex_toggle_key`) or from the **"Donations" button on the player inventory
+screen** — the discoverable route, for players who never learn the hotkey. That
+button sits directly under Lost Scrolls II's "Rankings" button where both mods
+are installed, and stands alone at the top centre where they aren't; turn it off
+with `inventory_button_enabled` in `valcoin_config.json`. Built as
 [DonationPanel.cs](../valheim-plugin/DonationPanel.cs). It is
 **fully navigable offline** (before the backend exists): the shop catalog and
 owned perks render from local data, while balance / live patron board /

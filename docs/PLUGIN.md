@@ -48,6 +48,13 @@ client-side to use the donation system at all.
   IMGUI panel (opens with F4); tabs: Donate / Shop / Gift / Patrons / Admin. Offline-resilient;
   Donate tab has inline code + Copy + Open-portal + cooldown + Terms modal. Renders owned/weekly/charge
   states from `/api/state`; header shows a persistent "Charges:" line for held consumables
+- [InventoryMenuButton.cs](../valheim-plugin/InventoryMenuButton.cs) — a **"Donations" button on the
+  player inventory screen**, cloned from the inventory's own "Take All" button so it inherits vanilla
+  styling. Positioned one row **below Lost Scrolls II's "Rankings" button** by reading that button's
+  live anchors each frame (`DonationButtonAnchor`) rather than duplicating its layout maths — matched
+  by GameObject name (`LSII_RankingsButton`), so there is no assembly reference or soft dependency and
+  it falls back to standing alone at the top centre when that mod is absent. Clicking it hides the
+  inventory and calls `DonationPanel.RequestOpen()`. Off via `inventory_button_enabled`
 - [DonationUiState.cs](../valheim-plugin/DonationUiState.cs) — blocks all game input (ZInput reads +
   Minimap/Inventory hard-guards) while the panel is open, so typing an amount can't open the map/inventory
 - [RpcLayer.cs](../valheim-plugin/RpcLayer.cs) + [UiActionRouter.cs](../valheim-plugin/UiActionRouter.cs)
@@ -113,6 +120,10 @@ The csproj expects these in `valheim-plugin/libs/`. Most come from Valheim's
   Same location.
 - **`UnityEngine.InputLegacyModule.dll`** ← needed for the F4 keybind. Same.
 - **`UnityEngine.TextRenderingModule.dll`** ← needed for `FontStyle` in the panel styles. Same.
+- **`UnityEngine.UI.dll`** ← needed for the inventory-screen Donations button (`Button`,
+  `LayoutElement` on the cloned "Take All" button). Same.
+- **`UnityEngine.UIModule.dll`** ← `RectTransform`, needed by the same button. Same.
+- **`Unity.TextMeshPro.dll`** ← `TMP_Text`, for relabelling that clone. Same.
 - **`UnityEngine.ParticleSystemModule.dll`** ← needed for the Familiars' particle auras (`ParticleSystem` force-loop / scaling). Same.
 - **`UnityEngine.AnimationModule.dll`** ← needed for the Familiars' cloned creature `Animator`s. Same.
 - `Newtonsoft.Json.dll`

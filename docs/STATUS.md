@@ -43,7 +43,22 @@ plugin↔backend compatibility matrix.
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.20.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.21.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+  **5.21.0** adds a **"Donations" button to the player inventory screen**
+  (`InventoryMenuButton.cs`) — a clone of the vanilla "Take All" button, parked one
+  row below Lost Scrolls II's "Rankings" button by reading that button's live
+  anchors each frame (matched by GameObject name; no assembly reference, and it
+  stands alone at the top centre when that mod is absent). Until now F4 was the only
+  way in, and F4 is the only input path the system has. New config key
+  `inventory_button_enabled` (default on); three new `libs/` DLLs
+  (`UnityEngine.UI`, `UnityEngine.UIModule`, `Unity.TextMeshPro`). Backend
+  unaffected. **Verified in-game 2026-08-25 on the HB Test profile: the button
+  lands under Rankings and the click-through opens the panel.** Deployed to the
+  HB Test profile **and the local dedicated server** (the latter an explicit
+  one-off promotion, on request — `deploy.ps1` still targets the test profile
+  only). NOT uploaded to Thunderstore; the deployed package `manifest.json` on
+  both targets still reads `5.20.0`, since deploys copy the DLL and never the
+  package metadata.
   **5.20.0** adds the **ecosystem wallet API** (`ValcoinWallet` — the first
   sanctioned way for a sibling mod to *debit* Valcoins, used by Lost Scrolls II's
   wagered tournaments and duel invites) and an **uncapped quest flag**
