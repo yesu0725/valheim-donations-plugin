@@ -43,7 +43,16 @@ plugin↔backend compatibility matrix.
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.21.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.21.1` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+  **5.21.1** ends the two-ledger split that let the shop refuse a player holding
+  **17,272** Valcoins by telling them they had **2**. `coin_balances.json` is a
+  cache that accumulates deltas from an assumed zero and had not been written in
+  8 days; the spend paths were gating on it. The local balance veto is gone from
+  the shop, gifts and the ecosystem wallet (the backend answers 402 and its detail
+  is surfaced), `admin_give`/`admin_remove` now go through `/api/admin/grant` and
+  `/api/spend` instead of editing the cache, and `GrantPoller` reconciles each
+  affected player's balance from `/api/state` after every ack. Backend unaffected.
+  **Diagnosed against the live server; the code fix is NOT yet verified in-game.**
   **5.21.0** adds a **"Donations" button to the player inventory screen**
   (`InventoryMenuButton.cs`) — a clone of the vanilla "Take All" button, parked one
   row below Lost Scrolls II's "Rankings" button by reading that button's live

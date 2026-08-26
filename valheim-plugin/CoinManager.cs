@@ -5,6 +5,21 @@ using System.IO;
 using Newtonsoft.Json;
 using UnityEngine;
 
+// Server-side balance CACHE. Not the ledger.
+//
+// The backend owns the coin ledger; this file exists so the server can show a
+// number in a toast without a round-trip, and so grant ids can be de-duplicated
+// across restarts. Treat every balance in here as advisory and possibly stale:
+//
+//   * It learns balances by ADDING deltas to what it already holds, and it holds
+//     0 for a player it has never recorded — so its first write for an unknown
+//     player is whatever that one grant was worth, not their real balance.
+//   * It only ever saw coins that arrived through GrantPoller or a spend reply.
+//
+// Both of those made it drift, and code that GATED on it refused players their
+// own money (see the note in ShopHandler.Buy). Nothing gates on it any more, and
+// GrantPoller.Reconcile overwrites it with the ledger's number after every grant
+// batch. Keep it that way: read it to display, never to decide.
 public static class CoinManager
 {
     private static readonly string SaveDir  = Path.Combine(Paths.ConfigPath, "valcoin_data");

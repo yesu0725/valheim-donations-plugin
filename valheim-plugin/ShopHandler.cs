@@ -27,14 +27,24 @@ public static class ShopHandler
         if (!Catalog.Items.TryGetValue(skuId, out var sku))
         { tell($"Unknown SKU: {skuId}. Check the Shop tab for the list."); return; }
 
-        // Cheap local pre-check so we don't make a network call only to bounce.
-        // Only veto on a balance we actually hold: a player absent from the cache
-        // (new server, wiped/stale coin_balances.json, restored backup) still has
-        // their coins on the backend, and treating "unknown" as 0 refused them
-        // their own money. The backend owns the ledger and answers 402 with a
-        // clear message, so when in doubt let the spend through and let it decide.
-        if (CoinManager.TryGetKnownBalance(steam64, out int local) && local < sku.Price)
-        { tell($"Not enough Valcoins ({local} / {sku.Price})."); return; }
+        // NO local balance pre-check. There used to be one here, reading
+        // CoinManager, and it refused purchases players could easily afford.
+        //
+        // CoinManager is a CACHE, not a ledger. It only ever learns a number by
+        // accumulating deltas onto whatever it already held, and it holds 0 for a
+        // player it has never seen (CoinManager.GetBalance) — so the first grant
+        // recorded for an unknown player MANUFACTURES a balance equal to just that
+        // grant. A 2-coin daily quest made the cache believe the player had exactly
+        // 2 Valcoins, and this check then refused a purchase against the 17,000 they
+        // actually held on the backend. It also never learned about coins credited
+        // any other way, so it drifted further from the truth every day.
+        //
+        // 5.19.2 fixed the "unknown player reads as broke" half of this by only
+        // vetoing on a KNOWN balance. That wasn't enough: a known balance is just as
+        // wrong once the cache has drifted, and it is more dangerous, because it
+        // looks authoritative. The backend owns the ledger and answers 402 on a
+        // genuine overdraft, so the decision belongs there and nowhere else. Saving
+        // one HTTP round-trip was never worth refusing a player their own money.
 
         // For grant_perk SKUs, refuse re-purchase if they already own it.
         if (sku.Effect == "grant_perk" && PerkManager.Has(steam64, sku.Perk))
@@ -86,7 +96,14 @@ public static class ShopHandler
                     if (err != null && err.Contains("429"))
                         tell($"Weekly limit reached for \"{sku.Name}\". {ExtractDetail(err)}".TrimEnd());
                     else if (err != null && err.Contains("402"))
-                        tell("The server says you don't have enough Valcoins. Check your balance at the top of the panel.");
+                    {
+                        // Prefer the backend's own words — its detail carries the
+                        // real balance, which is the number the player should act on.
+                        var detail = ExtractDetail(err);
+                        tell(string.IsNullOrEmpty(detail)
+                            ? "Not enough Valcoins for that purchase."
+                            : $"Not enough Valcoins. {detail}");
+                    }
                     else
                         tell($"Purchase failed. ({err ?? "unknown"})");
                     return;

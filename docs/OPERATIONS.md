@@ -13,6 +13,15 @@ Runtime behavior, safety nets, and troubleshooting for a live deployment.
   double-credit.
 - `/api/spend` and `/api/transfer` are idempotency-keyed by the plugin, so
   retries on flaky networks are safe.
+- **`coin_balances.json` is a cache, not a ledger.** It holds applied-grant ids
+  (the dedupe above) and a balance per player, but that balance is only ever a
+  running total of what this server happened to observe — it starts at 0 for a
+  player it has never recorded, so a drifted or fresh cache can report a balance
+  that is wildly wrong. Since 5.21.1 nothing gates a spend on it and `GrantPoller`
+  overwrites it from `/api/state` after each ack, but if you are reading it by
+  hand: the backend is the answer, this file is a guess. Before 5.21.1 the shop
+  gated on it, which refused a player with 17,272 coins on the grounds that this
+  file said 2.
 - OAuth states have a 10-minute TTL; expired rows are GC'd opportunistically.
 - Donations under `MIN_GRANT_COINS` are recorded as `rejected` for audit but
   not credited.

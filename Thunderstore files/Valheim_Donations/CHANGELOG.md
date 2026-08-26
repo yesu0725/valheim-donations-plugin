@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.21.1
+
+- **The shop no longer refuses coins you actually have — for real this time.** The shop was checking your balance against a file on the server instead of the donation ledger that holds your coins. That file only learned a balance by adding up what it happened to see, starting from zero for anyone it had never recorded — so a player with thousands of Valcoins could finish one 2-coin daily quest and be told they had exactly 2, and refused a purchase on the spot. Your balance is now read from one place only: the same ledger the panel shows you. Same fix for gifting and for staked events.
+- **Coins given by an admin are now real coins.** The Admin tab wrote them to that server-side file and nowhere else, so they showed up in no panel and could not be spent — they looked like coins right up until you tried to use them. Giving and removing now go through the ledger, and a gift from an admin arrives with the usual "+N Valcoins!" the same way a donation does.
+- **The balance in the "+N Valcoins!" popup is now the true one.** It is read back from the ledger after each payout rather than being a running total the server kept for itself, so it can no longer drift away from what your panel says.
+
+*No configuration changes. Nothing to reinstall beyond the update itself.*
+
 ## 5.21.0
 
 - **There is now a Donations button on your inventory screen.** F4 still opens the panel and always will, but a hotkey nobody told you about is not something you can discover — and that panel is the only way into donating, the shop, gifting and the patron board. The button sits with the others at the top of your inventory, styled like the game's own, so the feature is findable without anyone having to tell you the key. On servers running Lost Scrolls II it sits directly under **Rankings**; on servers without it, alone at the top centre.

@@ -20,6 +20,7 @@ public class GrantPoller : MonoBehaviour
     private class PendingResponse { public List<Grant> grants; }
     private class AckRequest      { public List<long>  ids; }
     private class AckResponse     { public int         acked; }
+    private class StateResponse   { public int         balance; }
 
     private Coroutine _loop;
 
@@ -65,32 +66,20 @@ public class GrantPoller : MonoBehaviour
             yield break;
 
         var applied = new List<long>(pending.grants.Count);
+        var toToast = new List<Grant>(pending.grants.Count);
+        var touched = new List<string>();
+
         foreach (var g in pending.grants)
         {
             try
             {
-                bool firstApply = CoinManager.TryApplyGrant(g.id, g.steam64, g.coins);
-                int bal = CoinManager.GetBalance(g.steam64);
-
-                if (firstApply)
-                {
-                    var player = SteamIdResolver.OnlinePlayerFor(g.steam64);
-                    if (player != null)
-                    {
-                        player.Message(MessageHud.MessageType.TopLeft,
-                            $"<color=yellow>+{g.coins} Valcoins!</color>  Balance: {bal}");
-                    }
-                    else
-                    {
-                        Debug.Log($"[Valcoin] +{g.coins} to {g.steam64} (offline). Balance: {bal}");
-                    }
-                }
+                if (CoinManager.TryApplyGrant(g.id, g.steam64, g.coins))
+                    toToast.Add(g);
                 else
-                {
                     Debug.Log($"[Valcoin] grant {g.id} replay (already applied locally); will re-ack.");
-                }
 
                 applied.Add(g.id);
+                if (!touched.Contains(g.steam64)) touched.Add(g.steam64);
             }
             catch (System.Exception ex)
             {
@@ -105,5 +94,57 @@ public class GrantPoller : MonoBehaviour
                 if (!ok) Debug.LogWarning($"[Valcoin] ack failed (will retry next tick): {e}");
             });
         }
+
+        // Reconcile the cache DOWN from the backend before saying any number out
+        // loud.
+        //
+        // TryApplyGrant can only add a delta to whatever it already held, and it
+        // holds 0 for a player it has never recorded — so on a fresh or drifted
+        // cache the running total is fiction. It read 2 for a player with 17,000
+        // coins on the ledger, because a 2-coin daily quest was the first grant it
+        // had ever written for them. Nothing pulled the real number back, so the
+        // gap only ever widened.
+        //
+        // The backend is the ledger, so after the ack we simply ASK it what the
+        // balance is and store that. One GET per player per batch, and only when
+        // there were grants to apply. Deliberately after the ack: post-ack is the
+        // one moment the answer is unambiguous, whether or not the ledger counts a
+        // grant as credited before it has been delivered.
+        foreach (var id in touched)
+            yield return Reconcile(id);
+
+        // Toast last, so the balance a player is shown is the reconciled one.
+        foreach (var g in toToast)
+        {
+            int bal = CoinManager.GetBalance(g.steam64);
+            var player = SteamIdResolver.OnlinePlayerFor(g.steam64);
+            if (player != null)
+                player.Message(MessageHud.MessageType.TopLeft,
+                    $"<color=yellow>+{g.coins} Valcoins!</color>  Balance: {bal}");
+            else
+                Debug.Log($"[Valcoin] +{g.coins} to {g.steam64} (offline). Balance: {bal}");
+        }
+    }
+
+    // Pull the authoritative balance for one player and overwrite the cache with
+    // it. Best-effort: on failure the cache keeps its accumulated number and the
+    // next batch tries again — a missed reconcile is a stale display, never a
+    // refused purchase, because nothing gates a spend on this value any more.
+    private IEnumerator Reconcile(string steam64)
+    {
+        if (string.IsNullOrEmpty(steam64)) yield break;
+
+        yield return BackendClient.Get<StateResponse>($"/api/state/{steam64}?top=0", (ok, r, e) =>
+        {
+            if (!ok || r == null)
+            {
+                Debug.LogWarning($"[Valcoin] balance reconcile failed for {steam64}: {e ?? "no response"}");
+                return;
+            }
+            int cached = CoinManager.GetBalance(steam64);
+            if (cached != r.balance)
+                Debug.Log($"[Valcoin] balance reconciled for {steam64}: cache {cached} -> ledger {r.balance}.");
+            CoinManager.SetBalance(steam64, r.balance);
+        });
     }
 }

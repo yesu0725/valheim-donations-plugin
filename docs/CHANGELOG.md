@@ -20,9 +20,9 @@ For "what is true right now" rather than "what changed", see
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Plugin | **5.21.0** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
+| Plugin | **5.21.1** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
 | Backend | **0.10.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
-| Thunderstore package | **5.21.0** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
+| Thunderstore package | **5.21.1** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
 > and player changelog all bumped — but no zip was ever uploaded. Its quest
@@ -63,6 +63,62 @@ newer plugin can ask for something an old backend doesn't serve:
 > `/openapi.json`'s version — that same trap cost a debugging round-trip when
 > the exchange-rate callout appeared to be broken client-side but was really an
 > undeployed backend.
+
+---
+
+## Plugin 5.21.1 — one ledger, not two
+
+Backend unaffected; no minimum backend version (both endpoints this now calls
+already existed).
+
+**The shop refused a purchase from a player holding 17,272 Valcoins, telling
+them they had 2.** Diagnosed on the live server: `/api/state` reported 17,272
+while `coin_balances.json` held 17,238 and had not been written in **eight
+days** — its applied-grant list stopped at grant id 20 while the backend was at
+id 57. Two ledgers, no reconciliation, and the spend path was gating on the
+wrong one.
+
+Three defects, all of them the same mistake in different places:
+
+1. **`CoinManager` accumulates from an assumed zero.** `TryApplyGrant` computes
+   `GetBalance(id) + amount`, and `GetBalance` returns **0** for a player it has
+   never recorded. So the first grant written for an unknown player *manufactures*
+   a balance equal to that one grant — a 2-coin daily quest makes the cache
+   believe the player has exactly 2. `ShopHandler` then printed that number
+   verbatim as `Not enough Valcoins (2 / price)`.
+2. **`admin_give` never touched the backend.** It wrote `CoinManager.AddCoins`
+   and stopped. Admin-granted test credits therefore existed in one JSON file on
+   one server, invisible to the player's own panel and to every purchase — they
+   looked real until someone tried to spend them. `admin_remove` was the same
+   edit in reverse.
+3. **Nothing ever reconciled the cache downward.** Once drifted, it stayed
+   drifted, and the gap only widened.
+
+**Fixes.** The local balance veto is gone from all three spend paths
+([`ShopHandler.Buy`](../valheim-plugin/ShopHandler.cs),
+[`GiftFlow.Run`](../valheim-plugin/Flows.cs),
+[`ValcoinWallet.Charge`](../valheim-plugin/ValcoinWallet.cs)) — the backend owns
+the ledger, answers 402 on a genuine overdraft, and its `detail` (which carries
+the real balance) is now surfaced instead of a generic line. Admin give/remove
+go through `/api/admin/grant` and `/api/spend` respectively, so a removal is
+auditable in `spends` next to every other debit and a grant arrives through the
+normal pipeline with the usual toast. `GrantPoller` gained a **`Reconcile`**
+step: after acking a batch it GETs `/api/state/<id>` for each affected player and
+overwrites the cached balance with the ledger's number, then toasts — so the
+number a player is shown is the reconciled one, and the cache converges on the
+truth after every payout instead of drifting from it.
+
+> **5.19.2 fixed half of this and that wasn't enough.** It stopped an *unknown*
+> player reading as broke, but left the veto in place for a *known* balance — and
+> a known balance is just as wrong once the cache has drifted, while looking far
+> more authoritative. The lesson is in the class comment on `CoinManager` now:
+> it is a cache, read it to display, never to decide.
+
+- `CoinManager` is documented as advisory-only; `ValcoinWallet.BalanceOf` is
+  marked display-only for sibling mods (signature unchanged — it is a soft
+  dependency).
+- Operators upgrading with an already-drifted `coin_balances.json` need do
+  nothing: the first grant for each player reconciles that player.
 
 ---
 

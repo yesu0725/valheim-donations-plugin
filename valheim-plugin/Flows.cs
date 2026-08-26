@@ -56,11 +56,10 @@ public static class GiftFlow
 
         if (toSteam64 == fromSteam64) { reply("You can't gift yourself."); return; }
 
-        // Same rule as the shop: only refuse on a balance we actually hold. A
-        // sender missing from the local cache still has coins on the backend,
-        // which is the authority and rejects an overdraft itself.
-        if (CoinManager.TryGetKnownBalance(fromSteam64, out int bal) && bal < amount)
-        { reply($"Not enough Valcoins ({bal} / {amount})."); return; }
+        // No local balance pre-check — see the long note in ShopHandler.Buy.
+        // CoinManager is a drifting cache, and vetoing a transfer on its number
+        // refused senders coins they demonstrably held on the backend. /api/transfer
+        // is atomic and rejects a real overdraft itself.
 
         var key = $"gift-{Guid.NewGuid():N}";
         SharedCoroutineRunner.Instance.StartCoroutine(BackendClient.Post<TransferResp>(
@@ -75,7 +74,13 @@ public static class GiftFlow
             },
             (ok, r, err) =>
             {
-                if (!ok || r == null) { reply($"Gift failed. ({err ?? "unknown"})"); return; }
+                if (!ok || r == null)
+                {
+                    reply(err != null && err.Contains("402")
+                        ? $"Not enough Valcoins to send {amount}."
+                        : $"Gift failed. ({err ?? "unknown"})");
+                    return;
+                }
                 CoinManager.SetBalance(fromSteam64, r.balance);
                 reply($"Sent {amount} Valcoins to {toName}. Your balance: {r.balance}");
             }));

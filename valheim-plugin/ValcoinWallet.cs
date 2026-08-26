@@ -77,6 +77,11 @@ public static class ValcoinWallet
     /// answered (offline, unresolvable id, or simply not in the local cache).
     /// -1 is deliberately distinct from 0: "unknown" must not read as "broke",
     /// which is the bug ShopHandler documents in its own pre-check.
+    ///
+    /// ADVISORY ONLY — for display ("you have N"), never as a gate. This reads the
+    /// local cache, which lags the backend between reconciles (GrantPoller pulls
+    /// the authoritative number after each grant batch). Do not refuse a wager on
+    /// it; call Charge and let the ledger decide, which is what it is for.
     public static int BalanceOf(string playerName)
     {
         if (!IsServer) return -1;
@@ -96,14 +101,9 @@ public static class ValcoinWallet
     {
         if (!Guard(coins, done, out var id, playerName, out var safeSku, sku)) return;
 
-        // Cheap local veto, same rule as the shop: only refuse on a balance we
-        // actually hold. An unknown balance goes to the backend, which owns the
-        // ledger and answers 402 itself.
-        if (CoinManager.TryGetKnownBalance(id, out int local) && local < coins)
-        {
-            done?.Invoke(false, $"Not enough Valcoins ({local} / {coins}).");
-            return;
-        }
+        // No local veto — see the long note in ShopHandler.Buy. The cache drifts,
+        // and refusing a wager on its number takes an entry fee decision away from
+        // the ledger that actually holds the coins. /api/spend answers 402 itself.
 
         var key = $"eco-{safeSku}-{Guid.NewGuid():N}";
         SharedCoroutineRunner.Instance.StartCoroutine(BackendClient.Post<SpendResp>(

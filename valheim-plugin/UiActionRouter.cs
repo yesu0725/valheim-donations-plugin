@@ -79,19 +79,80 @@ public static class UiActionRouter
         if (!ResolveTargetByName(targetName, out var targetSteam64, out var targetPlayer))
         { reply($"Player \"{targetName}\" not found or no Steam ID."); return; }
 
-        if (give)
+        if (!Config.Ready)
         {
-            CoinManager.AddCoins(targetSteam64, amount);
-            reply($"Gave {amount} Valcoins to {targetName}.");
-            targetPlayer?.Message(MessageHud.MessageType.TopLeft, $"+{amount} Valcoins from admin!");
+            reply("The donation backend isn't configured on this server, so balances can't be adjusted.");
+            return;
         }
-        else
-        {
-            int newBal = Math.Max(0, CoinManager.GetBalance(targetSteam64) - amount);
-            CoinManager.SetBalance(targetSteam64, newBal);
-            reply($"Removed {amount} from {targetName} (new balance: {newBal}).");
-            targetPlayer?.Message(MessageHud.MessageType.TopLeft, $"{amount} Valcoins removed by admin.");
-        }
+
+        if (give) AdminGive(targetSteam64, targetName, targetPlayer, amount, reply);
+        else      AdminRemove(targetSteam64, targetName, targetPlayer, amount, reply);
+    }
+
+    private class AdminGrantResp { public string status; public long grant_id; public int coins; }
+    private class AdminSpendResp { public string status; public int balance; public int spent; }
+
+    // Admin adjustments go through the BACKEND, which owns the ledger.
+    //
+    // They used to write CoinManager and nothing else. That cache is not the
+    // ledger — the panel, the shop and every other client read the backend — so
+    // admin-granted coins existed only in one JSON file on one server and were
+    // invisible everywhere they mattered: the player's own panel never showed
+    // them, and a purchase against them was refused for insufficient funds by a
+    // backend that had never heard of the credit. Test credits handed out this way
+    // looked real for as long as nobody tried to spend them.
+    //
+    // Credit rides /api/admin/grant, the same free-form adjustment endpoint the
+    // ecosystem wallet uses for payouts, so the coins arrive through the normal
+    // grant pipeline (GrantPoller toast + cache reconcile, see ValcoinWallet.Credit).
+    private static void AdminGive(string steam64, string name, Player player, int amount, Action<string> reply)
+    {
+        SharedCoroutineRunner.Instance.StartCoroutine(BackendClient.Post<AdminGrantResp>(
+            "/api/admin/grant",
+            new { steam64, coins = amount, note = $"admin_give: {name}" },
+            (ok, r, err) =>
+            {
+                if (!ok || r == null)
+                {
+                    reply($"Couldn't give {amount} to {name} — the ledger refused it. ({err ?? "unknown"})");
+                    return;
+                }
+                // No local write and no toast here: the grant is now pending on the
+                // backend, and GrantPoller delivers it (and the "+N Valcoins!" toast)
+                // on its next tick, exactly like a donation or a quest payout.
+                reply($"Gave {amount} Valcoins to {name}. It lands on their next grant tick.");
+            }));
+    }
+
+    // Debit rides /api/spend — the same atomic, idempotency-keyed debit the shop
+    // uses. Recording a removal as a spend keeps it auditable in the ledger next to
+    // every other debit, rather than being a silent edit of a cache file.
+    private static void AdminRemove(string steam64, string name, Player player, int amount, Action<string> reply)
+    {
+        var key = $"adminrm-{Guid.NewGuid():N}";
+        SharedCoroutineRunner.Instance.StartCoroutine(BackendClient.Post<AdminSpendResp>(
+            "/api/spend",
+            new
+            {
+                steam64,
+                sku = "admin_remove",
+                coins = amount,
+                idempotency_key = key,
+                metadata = new { source = "admin", player = name ?? "" },
+            },
+            (ok, r, err) =>
+            {
+                if (!ok || r == null)
+                {
+                    reply(err != null && err.Contains("402")
+                        ? $"{name} doesn't have {amount} Valcoins to remove."
+                        : $"Couldn't remove {amount} from {name}. ({err ?? "unknown"})");
+                    return;
+                }
+                CoinManager.SetBalance(steam64, r.balance);
+                reply($"Removed {amount} from {name} (new balance: {r.balance}).");
+                player?.Message(MessageHud.MessageType.TopLeft, $"{amount} Valcoins removed by admin.");
+            }));
     }
 
     private static bool ResolveTargetByName(string name, out string steam64, out Player player)
