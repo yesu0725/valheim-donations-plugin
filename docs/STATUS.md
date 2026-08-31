@@ -5,6 +5,73 @@ files before trusting it if it's been a while. For *what changed* rather than
 *what's true now*, see [CHANGELOG.md](CHANGELOG.md), which also carries the
 plugin↔backend compatibility matrix.
 
+## Where things stand — 2026-08-26
+
+**Deployed / published right now.** These four drift apart constantly; check
+them before believing any bug report (see the DLL-timestamp trap below).
+
+| Target | Plugin | Notes |
+|---|---|---|
+| **Thunderstore (public)** | **5.20.0** | Published 2026-08-23. **This is what every player's client runs.** It has neither the inventory button nor the coin fixes. |
+| **Dedicated server** | **5.21.1** | Has the ledger fix (no cache veto). Does **not** have 5.21.2. |
+| **HB Test (Gale)** | **5.21.2** | `deploy.ps1`'s only target. |
+| `bin/Release` | **5.21.2** | Clean build. |
+
+**Open items, highest value first.**
+
+1. **Promote 5.21.2 to the dedicated server.** It is the only place the
+   one-time-quest message fix has any effect — `QuestFlow` runs server-side, so
+   clients are unaffected. Awaiting the owner's go-ahead (the server is not a
+   `deploy.ps1` target on purpose; see the deploy note below).
+2. **The built release zip is stale.**
+   `Thunderstore files/Valheim_Donations-v5.21.1_20260825-2324.zip` was verified
+   good (5 files flat at root, versions consistent) but **5.21.2 supersedes it** —
+   rebuild from the package folder before uploading. A release is only needed to
+   give *players* the inventory button; every coin fix in 5.21.x is server-side.
+   The manifest description was cut to 248 chars for Thunderstore's 250 cap; do
+   not re-lengthen it.
+3. **270 Valcoins owed to three players, not yet settled.** `vc_welcome` is
+   `period: once` and its payout was raised **30 → 300** after these three had
+   already claimed it, so they can never claim the difference:
+   `76561199062837584` (Taeguk), `76561198064737621` (Xyn),
+   `76561198075620490` (Traveler Z). Settle by hand from the Admin tab if you
+   want them made whole — that tab only reaches the real ledger on **5.21.1+**
+   (before that it edited the local cache and the coins were unspendable).
+   Owner's call; deliberately not done.
+4. **Gap in the 5.21.1 reconcile, not yet closed.** `GrantPoller.Reconcile`
+   only runs for players who have a grant in the *current* pending batch — `Tick`
+   returns early when the queue is empty — so a player who never earns another
+   grant keeps a stale cached balance indefinitely. Nothing gates on that cache
+   any more, so the blast radius is the "+N Valcoins!" toast figure and
+   `ValcoinWallet.BalanceOf` (advisory, used by sibling mods for display). A
+   periodic reconcile over connected players would close it.
+5. **4 commits sit unpushed on local `main`** (`e61b440`, `13a0606`, `76f5094`,
+   `7aa57a2`, `cc6dac4`).
+
+**Closed this round, recorded so it isn't re-investigated.**
+
+- **`76561198128047618` (HearthboundJero) "did not receive" 300 — they did.**
+  Backend balance **315**, and their ledger rows sum to exactly 315.
+  `coin_balances.json` said **15**: its `recentGrants` holds 52 and 54 but skips
+  **53**, which is the 300. The cache is not the ledger. Why that one grant
+  failed to record locally is unrecoverable — `LogOutput.log` is overwritten on
+  every restart — and no longer matters, since 5.21.1 stopped gating on the file
+  and it self-corrects on that player's next grant. **Do not reset the quest to
+  "retry" it:** `period: once` pays `already_claimed` forever, the pending queue
+  is empty (nothing in limbo), and a re-pay would double-credit them.
+- **The daily cap was never the problem.** The backend applies it to
+  `period: daily` quests only — verified against the ledger, where 300
+  (`vc_welcome`) passed untouched on a day the same player's dailies were trimmed
+  to exactly 8. One-time quests, including every `gospel_*`, are exempt by
+  construction and need no `capped: false`.
+- **`vc_welcome_haldor` is a ServerGuide entry, not a Valcoin quest id.** It is
+  step 2 of 2 and its reward sets `VC.Q.vc_welcome`, so the payout id is
+  `vc_welcome`. Nothing to fix.
+
+Full reasoning for all of the above is in the 5.21.1 and 5.21.2 entries of
+[CHANGELOG.md](CHANGELOG.md); how to query the live ledger is in
+[OPERATIONS.md](OPERATIONS.md).
+
 - **Project phase:** 6+ — backend is **live on Fly.io** with **three providers
   configured** (Ko-fi, Patreon, PayMongo; PayPal removed 2026-08-11 — needs a
   business account this server doesn't have), plugin catalog

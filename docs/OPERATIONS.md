@@ -42,10 +42,54 @@ left unlinked to a Steam64.
 
 ## The plugin's local balance cache is not authoritative
 
-It only answers the panel's balance display instantly without a network
-round-trip. The backend's SQLite is always the source of truth. If the two
-ever disagree (e.g. after a manual `/api/admin/grant`), the plugin's next
-poll cycle reconciles it.
+`BepInEx/config/valcoin_data/coin_balances.json` on the **server** is a cache.
+The backend's SQLite is always the source of truth, and the F4 panel reads the
+backend directly (`/api/state`), never this file.
+
+It has been observed **wildly** wrong, so do not diagnose from it:
+
+- It only ever learns a balance by ADDING a delta to what it already holds, and
+  it holds **0** for a player it has never recorded — so its first write for an
+  unknown player equals that one grant, not their balance.
+- Individual grants have gone missing from it while landing correctly in the
+  ledger (one player read 15 against a true 315 — its `recentGrants` held the
+  grant ids either side of the 300 and skipped it).
+
+Since **5.21.1** nothing gates a spend on it, and `GrantPoller.Reconcile`
+overwrites a player's entry from `/api/state` after each grant batch. Note the
+reconcile only fires for players who had a grant in that batch, so an idle
+player's entry can stay stale indefinitely — harmless, but don't read it.
+
+## Reading the live ledger
+
+The fastest way to answer "does this player actually have the coins?" — and the
+only reliable one, since the cache above lies and `LogOutput.log` is wiped on
+every restart.
+
+The token is `plugin_token` from the server's
+`BepInEx/config/valcoin_config.json`. The header is **`Authorization: Bearer
+<token>`** — `X-Plugin-Token` returns 401.
+
+```powershell
+$cfg = Get-Content "<server>/BepInEx/config/valcoin_config.json" -Raw | ConvertFrom-Json
+$h = @{ Authorization = "Bearer $($cfg.plugin_token)"; Accept = 'application/json' }
+
+# one player's authoritative balance
+Invoke-RestMethod -Uri "$($cfg.backend_url)/api/state/<steam64>" -Headers $h
+
+# their full history — note include_hidden, or the owner's own account is omitted
+$j = (Invoke-WebRequest -Headers $h -Uri `
+  "$($cfg.backend_url)/api/admin/ledger?steam64=<steam64>&since=30d&limit=200&include_hidden=true").Content | ConvertFrom-Json
+$j.entries | Format-Table -AutoSize
+
+# anything still awaiting delivery (empty = nothing is in limbo)
+Invoke-RestMethod -Uri "$($cfg.backend_url)/api/grants/pending?limit=50" -Headers $h
+```
+
+The ledger response is `{ summary, entries }` — the rows are under `entries`,
+not at the top level. A player's `entries` (excluding `donation` rows, which
+show fiat) should sum to their `/api/state` balance; if it does, the ledger is
+consistent and any disagreement is on the plugin side.
 
 ## Common errors
 
