@@ -12,15 +12,21 @@ before believing any bug report (see the DLL-timestamp trap below).
 
 | Target | Plugin | Notes |
 |---|---|---|
-| **Thunderstore (public)** | **5.20.0** | Published 2026-08-23. **This is what every player's client runs.** No inventory button, none of the coin fixes, none of the 5.22.x purchase-integrity work. |
-| **Dedicated server** | **5.22.2** | Promoted 2026-08-31 after the owner verified the build. DLL hash checked against `bin/Release`; its `manifest.json` bumped 5.21.1 → 5.22.2 in place, keeping its own dependency list (no `denikson-BepInExPack_Valheim` — that is the client pack). |
+| **Thunderstore (public)** | **5.22.2** | Published 2026-08-31 13:33 UTC. **This is what every player's client runs.** Verified against the Thunderstore API, not just assumed: `GET /api/experimental/package/TaegukGaming/Valheim_Donations/` reports `5.22.2` as latest, `is_deprecated: false`. Supersedes 5.20.0, which had been the public version since 2026-08-23. |
+| **Dedicated server** | **5.22.2** | Promoted 2026-08-31, **restarted and tested by the owner** — so the DLL is actually loaded, not merely on disk. DLL hash checked against `bin/Release`; its `manifest.json` bumped 5.21.1 → 5.22.2 in place, keeping its own dependency list (no `denikson-BepInExPack_Valheim` — that is the client pack). |
 | **Every Gale profile** | **5.22.2** | `HB Test`, `Hearthbound Valheim`, `Hearthbound - Admin`, `HB Modpack Ref` — all four, because Gale hard-links them to one file. See below. |
 | `bin/Release` | **5.22.2** | Clean build (0 errors). |
 
-**5.22.2 is verified in-game by the owner and deployed.** 5.22.0 and 5.22.1 are
-**burned numbers** — each ran on HB Test, each had faults found there, neither
-was published; same rule that burned 5.18.0. Their zips are still on disk next
-to the live one; ignore them.
+**The 5.22.2 rollout is COMPLETE — published, deployed, restarted and tested.**
+For the first time in this project's history every target is on the same
+version: Thunderstore, the dedicated server, every Gale profile and
+`bin/Release` all read 5.22.2. The table above normally exists because those
+four drift; right now they do not, so any bug report from here on is about
+5.22.2 on both halves and nothing else.
+
+5.22.0 and 5.22.1 are **burned numbers** — each ran on HB Test, each had faults
+found there, neither was published; same rule that burned 5.18.0. Their zips are
+still on disk next to the published one; ignore them.
 
 **Gale hard-links mod files across profiles, so `deploy.ps1` has never been
 "test profile only" since the move to Gale.** All four profiles share one NTFS
@@ -33,26 +39,19 @@ failure that cost two debugging sessions under r2modman. The dedicated server's
 copy is standalone and unaffected. **The old note that `deploy.ps1` "does not
 touch the played profile" was wrong; do not act on it.**
 
-Still unexercised: **the purchase retry/refund path**, which by construction only
-runs when the backend is slow or unreachable. Worth forcing once (stop the
-backend mid-buy) rather than waiting to meet it in the wild.
+**Still unexercised: the purchase retry/refund path.** Everything else in
+5.22.2 has now been used in anger, but the retry and the compensating refund
+only run when the backend is slow, unreachable, or answers a spend it then
+cannot deliver — none of which happens on a healthy day. It is the one part of
+this release whose first real execution will be in front of a player. Forcing it
+once (stop the backend mid-buy; point a SKU at a bogus prefab id) would settle
+it cheaply. Both leave a trail: the refund logs
+`[Valcoin] refunded N to <id> for undelivered <sku>` and shows up in the ledger
+as an `admin` grant noted `refund: <sku> could not be delivered`.
 
 **Open items, highest value first.**
 
-1. **Publish 5.22.2 to Thunderstore.** The only remaining half of the rollout,
-   and the one thing here that cannot be done from this repo. Players are still
-   on **5.20.0**, so they have none of the client-side work: the purchase result
-   modal, the "Processing" window, the armor pre-check, the game-skinned panel,
-   and the inventory-screen Donations button from 5.21.0. Upload
-   `Thunderstore files/Valheim_Donations-v5.22.2_20260831-0806.zip` (5 files flat
-   at root) at <https://thunderstore.io/c/valheim/create/docs/>. Order no longer
-   matters — 5.22.1+ works in both directions of the client/server version skew,
-   which 5.22.0 did not, so a 5.20.0 client against this 5.22.2 server is fine
-   in the meantime.
-2. **Restart the dedicated server** if it has not been since 2026-08-31 — the
-   plugin reads its config and catalogs once, in `Awake`, so the promoted DLL is
-   not live until then.
-3. **270 Valcoins owed to three players, not yet settled.** `vc_welcome` is
+1. **270 Valcoins owed to three players, not yet settled.** `vc_welcome` is
    `period: once` and its payout was raised **30 → 300** after these three had
    already claimed it, so they can never claim the difference:
    `76561199062837584` (Taeguk), `76561198064737621` (Xyn),
@@ -60,15 +59,16 @@ backend mid-buy) rather than waiting to meet it in the wild.
    want them made whole — that tab only reaches the real ledger on **5.21.1+**
    (before that it edited the local cache and the coins were unspendable).
    Owner's call; deliberately not done.
-4. **Gap in the 5.21.1 reconcile, not yet closed.** `GrantPoller.Reconcile`
+2. **Gap in the 5.21.1 reconcile, not yet closed.** `GrantPoller.Reconcile`
    only runs for players who have a grant in the *current* pending batch — `Tick`
    returns early when the queue is empty — so a player who never earns another
    grant keeps a stale cached balance indefinitely. Nothing gates on that cache
    any more, so the blast radius is the "+N Valcoins!" toast figure and
    `ValcoinWallet.BalanceOf` (advisory, used by sibling mods for display). A
    periodic reconcile over connected players would close it.
-5. **4 commits sit unpushed on local `main`** (`e61b440`, `13a0606`, `76f5094`,
-   `7aa57a2`, `cc6dac4`).
+3. **Nothing is unpushed.** `main` is in sync with `origin/main` as of
+   2026-08-31 (`5b7e0ec`); the backlog of 5.21.x commits went up with the
+   5.22.2 release.
 
 **Closed this round, recorded so it isn't re-investigated.**
 
@@ -191,10 +191,14 @@ Full reasoning for all of the above is in the 5.21.1 and 5.21.2 entries of
   unaffected. **Verified in-game 2026-08-25 on the HB Test profile: the button
   lands under Rankings and the click-through opens the panel.** Deployed to the
   HB Test profile **and the local dedicated server** (the latter an explicit
-  one-off promotion, on request — `deploy.ps1` still targets the test profile
-  only). NOT uploaded to Thunderstore; the deployed package `manifest.json` on
-  both targets still reads `5.20.0`, since deploys copy the DLL and never the
-  package metadata.
+  one-off promotion, on request). 5.21.0 was never uploaded under its own
+  number; **the inventory button reached players inside 5.22.2 on 2026-08-31**.
+  Two notes from this release that outlived it: `deploy.ps1` was believed to
+  target the test profile only, which the Gale hard-link finding later disproved
+  (see the top of this file), and deploys copy the DLL and never the package
+  metadata, so a deployed `manifest.json` reports whatever version was last
+  copied by hand — that is why the dedicated server's was bumped in place for
+  5.22.2 rather than left to drift.
   **5.20.0** adds the **ecosystem wallet API** (`ValcoinWallet` — the first
   sanctioned way for a sibling mod to *debit* Valcoins, used by Lost Scrolls II's
   wagered tournaments and duel invites) and an **uncapped quest flag**
@@ -202,9 +206,9 @@ Full reasoning for all of the above is in the 5.21.1 and 5.21.2 entries of
   prizes are not trimmed by the 8-coin daily allowance. **Deployed to the
   dedicated server + both test profiles, and PUBLISHED to Thunderstore on
   2026-08-23** (verified against the Thunderstore API 2026-08-25 — this line
-  previously claimed it was never uploaded, which was wrong). **5.20.0 is
-  therefore what every player's client is running**, and the backend change went
-  to Fly.io the same day (see the backend section above).
+  previously claimed it was never uploaded, which was wrong). It was the public
+  version until **5.22.2 superseded it on 2026-08-31**; the backend change went
+  to Fly.io the same day it shipped (see the backend section above).
   **5.19.3** is cosmetic only: familiars hover at the player's **left** shoulder
   (`ArmorVfx.CompanionOffset` X `-0.75`), and the Fallen Valkyrie's smoke is
   stripped in favour of the Wraith's glow, grafted via the new

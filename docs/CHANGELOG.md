@@ -71,10 +71,14 @@ newer plugin can ask for something an old backend doesn't serve:
 Backend unaffected. Client-side only. 5.22.1 was deployed to HB Test and never
 published; this is what running it showed.
 
-**Verified in-game by the owner and deployed 2026-08-31** — dedicated server
-(DLL + `manifest.json` bumped in place) and every Gale profile. Not yet
-published to Thunderstore, so players remain on 5.20.0; the client/server skew
-that fix #1 of 5.22.1 addressed is what makes that safe to leave for now.
+**Shipped in full on 2026-08-31.** Verified in-game by the owner, promoted to
+the dedicated server (DLL + `manifest.json` bumped in place, then restarted and
+tested), rolled to every Gale profile, and **published to Thunderstore at 13:33
+UTC** — confirmed against the package API rather than assumed, the lesson from
+5.20.0, whose listing state this file got wrong in both directions before being
+checked. Every target is on 5.22.2, so for once the plugin has no version skew
+anywhere: the compatibility work in 5.22.1 is now belt-and-braces rather than
+load-bearing.
 
 ### Sampling a palette is not the same as reading it against its background
 
