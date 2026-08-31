@@ -17,6 +17,19 @@ $dll  = Join-Path $here 'bin\Release\ValheimDonationSystem.dll'
 # any other profile; 2026-08-17: moved off r2modman to Gale, which stores
 # profiles under %APPDATA%\com.kesomannen.gale\valheim\profiles\).
 #
+# CAVEAT, measured 2026-08-31: "do not touch any other profile" is NOT what
+# happens under Gale. Gale hard-links mod files across profiles - all four
+# profiles here share ONE inode for this DLL (verify with `fsutil file
+# queryfileid` on each; the ids match). Copy-Item overwrites a file's contents,
+# so this write goes through the link and every profile holding this mod gets
+# the new DLL, the played one included.
+#
+# Left as-is deliberately: it means the played profile is never stranded on a
+# stale DLL, which is the exact failure that cost two debugging sessions under
+# r2modman. To actually isolate the test profile, Remove-Item the destination
+# before copying - that breaks the link and gives it a file of its own. See the
+# Gale hard-link note in docs/OPERATIONS.md.
+#
 # Deliberately NOT deployed to any more, leave these alone:
 #   - the live/played client profile (currently "HB Server", previously
 #     "Hearthbound Server" / "Hearthbound Valheim" - it keeps getting renamed)

@@ -166,6 +166,33 @@ edit.
 > **Before concluding a code fix didn't work in-game,** compare the deployed
 > DLL's timestamp and size against `valheim-plugin/bin/Release/ValheimDonationSystem.dll`.
 
+> **Gale HARD-LINKS mod files across profiles, so "one destination" is not what
+> actually happens** (found 2026-08-31). Every Gale profile that has a given mod
+> version installed shares **one file on disk** — four profile paths, one NTFS
+> inode:
+>
+> ```powershell
+> # all four print the same File ID
+> foreach ($p in (Get-ChildItem "$env:APPDATA\com.kesomannen.gale\valheim\profiles")) {
+>   fsutil file queryfileid "$($p.FullName)\BepInEx\plugins\TaegukGaming-Valheim_Donations\ValheimDonationSystem.dll"
+> }
+> ```
+>
+> `Copy-Item` overwrites a file's *contents*, so writing the DLL into `HB Test`
+> writes through the link into `Hearthbound Valheim`, `Hearthbound - Admin` and
+> `HB Modpack Ref` as well. **`deploy.ps1` has been updating the played profile
+> all along**, its own comment notwithstanding, and so has every deploy since the
+> move to Gale on 2026-08-17.
+>
+> This cuts both ways and neither is obviously wrong, so it is written down
+> rather than "fixed": the played profile is never left on a stale DLL (the
+> failure that cost two debugging sessions under r2modman), but a build deployed
+> for testing is live on the played profile the moment it lands, with no separate
+> decision to promote it. If you ever want the isolation the comment promises,
+> `deploy.ps1` must **delete the destination first** and then copy — that breaks
+> the link and gives the test profile a file of its own. The dedicated server is
+> unaffected either way: its copy is standalone, not linked to anything.
+
 ## Quest rewards: promote the ServerGuide YAML and the plugin DLL together
 
 A quest is **two halves on two machines**. ServerGuide's YAML (server-side, and

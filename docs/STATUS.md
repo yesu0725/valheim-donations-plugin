@@ -5,31 +5,53 @@ files before trusting it if it's been a while. For *what changed* rather than
 *what's true now*, see [CHANGELOG.md](CHANGELOG.md), which also carries the
 plugin↔backend compatibility matrix.
 
-## Where things stand — 2026-08-26
+## Where things stand — 2026-08-31
 
-**Deployed / published right now.** These four drift apart constantly; check
-them before believing any bug report (see the DLL-timestamp trap below).
+**Deployed / published right now.** These drift apart constantly; check them
+before believing any bug report (see the DLL-timestamp trap below).
 
 | Target | Plugin | Notes |
 |---|---|---|
-| **Thunderstore (public)** | **5.20.0** | Published 2026-08-23. **This is what every player's client runs.** It has neither the inventory button nor the coin fixes. |
-| **Dedicated server** | **5.21.1** | Has the ledger fix (no cache veto). Does **not** have 5.21.2. |
-| **HB Test (Gale)** | **5.21.2** | `deploy.ps1`'s only target. |
-| `bin/Release` | **5.21.2** | Clean build. |
+| **Thunderstore (public)** | **5.20.0** | Published 2026-08-23. **This is what every player's client runs.** No inventory button, none of the coin fixes, none of the 5.22.x purchase-integrity work. |
+| **Dedicated server** | **5.22.2** | Promoted 2026-08-31 after the owner verified the build. DLL hash checked against `bin/Release`; its `manifest.json` bumped 5.21.1 → 5.22.2 in place, keeping its own dependency list (no `denikson-BepInExPack_Valheim` — that is the client pack). |
+| **Every Gale profile** | **5.22.2** | `HB Test`, `Hearthbound Valheim`, `Hearthbound - Admin`, `HB Modpack Ref` — all four, because Gale hard-links them to one file. See below. |
+| `bin/Release` | **5.22.2** | Clean build (0 errors). |
+
+**5.22.2 is verified in-game by the owner and deployed.** 5.22.0 and 5.22.1 are
+**burned numbers** — each ran on HB Test, each had faults found there, neither
+was published; same rule that burned 5.18.0. Their zips are still on disk next
+to the live one; ignore them.
+
+**Gale hard-links mod files across profiles, so `deploy.ps1` has never been
+"test profile only" since the move to Gale.** All four profiles share one NTFS
+inode for `ValheimDonationSystem.dll` (identical `fsutil file queryfileid`
+output), and `Copy-Item` overwrites contents, so a write to `HB Test` goes
+through the link to the played profile too. Measured 2026-08-31, documented in
+[OPERATIONS.md](OPERATIONS.md) and in `deploy.ps1`'s own header, and left as-is
+on purpose — the played profile is never stranded on a stale DLL, which is the
+failure that cost two debugging sessions under r2modman. The dedicated server's
+copy is standalone and unaffected. **The old note that `deploy.ps1` "does not
+touch the played profile" was wrong; do not act on it.**
+
+Still unexercised: **the purchase retry/refund path**, which by construction only
+runs when the backend is slow or unreachable. Worth forcing once (stop the
+backend mid-buy) rather than waiting to meet it in the wild.
 
 **Open items, highest value first.**
 
-1. **Promote 5.21.2 to the dedicated server.** It is the only place the
-   one-time-quest message fix has any effect — `QuestFlow` runs server-side, so
-   clients are unaffected. Awaiting the owner's go-ahead (the server is not a
-   `deploy.ps1` target on purpose; see the deploy note below).
-2. **The built release zip is stale.**
-   `Thunderstore files/Valheim_Donations-v5.21.1_20260825-2324.zip` was verified
-   good (5 files flat at root, versions consistent) but **5.21.2 supersedes it** —
-   rebuild from the package folder before uploading. A release is only needed to
-   give *players* the inventory button; every coin fix in 5.21.x is server-side.
-   The manifest description was cut to 248 chars for Thunderstore's 250 cap; do
-   not re-lengthen it.
+1. **Publish 5.22.2 to Thunderstore.** The only remaining half of the rollout,
+   and the one thing here that cannot be done from this repo. Players are still
+   on **5.20.0**, so they have none of the client-side work: the purchase result
+   modal, the "Processing" window, the armor pre-check, the game-skinned panel,
+   and the inventory-screen Donations button from 5.21.0. Upload
+   `Thunderstore files/Valheim_Donations-v5.22.2_20260831-0806.zip` (5 files flat
+   at root) at <https://thunderstore.io/c/valheim/create/docs/>. Order no longer
+   matters — 5.22.1+ works in both directions of the client/server version skew,
+   which 5.22.0 did not, so a 5.20.0 client against this 5.22.2 server is fine
+   in the meantime.
+2. **Restart the dedicated server** if it has not been since 2026-08-31 — the
+   plugin reads its config and catalogs once, in `Awake`, so the promoted DLL is
+   not live until then.
 3. **270 Valcoins owed to three players, not yet settled.** `vc_welcome` is
    `period: once` and its payout was raised **30 → 300** after these three had
    already claimed it, so they can never claim the difference:
@@ -110,7 +132,37 @@ Full reasoning for all of the above is in the 5.21.1 and 5.21.2 entries of
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.21.2` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.22.2` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+  **Verified in-game and deployed 2026-08-31.**
+  **5.22.2** makes the panel's text legible on the wood it now wears: 5.22.1 used
+  the reference screenshot's colours literally, and mid-tone text on a mid-tone
+  ground vanished. Body and secondary text are near-white, the accent styles draw
+  a dark shadow behind themselves (`ShadowLabel`) the way the game outlines its
+  TMP text, and the rate callout moved into a dark recess. Also: `PickFont`
+  matched `AveriaSerifLibre-Bold` as a substring of `-BoldItalic`, so every
+  heading, the primary button and the rate callout were rendering slanted.
+  **5.22.1** fixes two faults in 5.22.0, both found by running it: a purchase
+  against a server that predates the new verdict marker sat out the whole wait
+  window and reported "Purchase Unconfirmed" for a spend that succeeded (the
+  client now reads a plain reply as the verdict again, and takes the marker only
+  when offered), and the panel came out orange — the modal scrim was sharing a
+  style with the section rule and so tinted the whole screen, buttons were being
+  brightened 1.5x, and the accent was read off an arbitrary label. The palette is
+  now written down; sizes are still measured. New `panel_use_game_skin` key
+  (default on) turns sprite extraction off.
+  **5.22.0** (burned, never published) stops a purchase reporting failure while the coins are gone, and
+  re-skins the panel from the game's own inventory screen. The client's
+  give-up window was **12s** against a server that waits **15s** on the backend,
+  so an ordinary Fly.io cold start painted "Purchase Failed" over a spend that
+  then went through; an unanswered `/api/spend` is now retried on the same
+  idempotency key (the only way to learn what really happened), `duplicate` is
+  treated as "already paid, deliver it" instead of "skip the effect", an effect
+  that cannot be delivered is **refunded** via `/api/admin/grant`, and the
+  server states the verdict (`__BUYRES__:ok|fail|hold`) instead of the panel
+  guessing it from the reply's wording. Gifts got the same retry.
+  `ValheimTheme.cs` lifts the inventory's panel and button sprites, font, text
+  colours and type sizes at runtime. Backend unaffected.
+  **Built and deployed to HB Test; NOT yet verified in-game.**
   **5.21.2** stops a `period: once` quest reporting a reset it does not have
   ("already claimed today - resets in 7h 16m", printed from the daily timer for
   every quest alike). Server-side only. Diagnosed alongside a `vc_welcome` payout
