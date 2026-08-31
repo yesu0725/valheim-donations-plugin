@@ -24,6 +24,18 @@ public static class Config
     // or whose inventory top edge is crowded by other mods, can turn it off.
     public static bool   InventoryButtonEnabled { get; private set; } = true;
 
+    // Skin the donation panel with sprites lifted from the player inventory
+    // screen (ValheimTheme). On by default -- it is what makes the panel look
+    // like part of the game rather than an approximation of it.
+    //
+    // The escape hatch exists because the extraction reads a live UI hierarchy
+    // this mod does not own: if a future Valheim build reshuffles the inventory
+    // and the heuristics pick the wrong sprite, this turns the whole thing off
+    // without waiting for a new release. Off, the panel draws itself from the
+    // written-down Valheim palette instead, which is not as good and is never
+    // wrong. Font and type sizes are still read from the game either way.
+    public static bool   PanelUseGameSkin { get; private set; } = true;
+
     // Soulkeeper Phase 2 (prototype): after a warded death, the Valkyrie picks
     // the player up at the spawn point (20s after respawn) and flies them the
     // real route to their tombstone. This flag gates that cutscene; off (or on
@@ -65,6 +77,8 @@ public static class Config
                     WelcomeMessage = (string)json["welcome_message"];
                 if (json["inventory_button_enabled"] != null)
                     InventoryButtonEnabled = (bool)json["inventory_button_enabled"];
+                if (json["panel_use_game_skin"] != null)
+                    PanelUseGameSkin = (bool)json["panel_use_game_skin"];
                 if (json["valkyrie_carry_visual"] != null)
                     ValkyrieCarryVisual = (bool)json["valkyrie_carry_visual"];
             }
@@ -81,6 +95,7 @@ public static class Config
   ""welcome_message_enabled"": true,
   ""welcome_message"": null,
   ""inventory_button_enabled"": true,
+  ""panel_use_game_skin"": true,
 
   ""valkyrie_carry_visual"": true
 }

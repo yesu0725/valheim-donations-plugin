@@ -20,9 +20,9 @@ For "what is true right now" rather than "what changed", see
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Plugin | **5.21.2** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
+| Plugin | **5.22.2** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
 | Backend | **0.10.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
-| Thunderstore package | **5.21.2** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
+| Thunderstore package | **5.22.2** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
 > and player changelog all bumped — but no zip was ever uploaded. Its quest
@@ -65,6 +65,260 @@ newer plugin can ask for something an old backend doesn't serve:
 > undeployed backend.
 
 ---
+
+## Plugin 5.22.2 — the panel's own text, made legible on it
+
+Backend unaffected. Client-side only. 5.22.1 was deployed to HB Test and never
+published; this is what running it showed.
+
+**Verified in-game by the owner and deployed 2026-08-31** — dedicated server
+(DLL + `manifest.json` bumped in place) and every Gale profile. Not yet
+published to Thunderstore, so players remain on 5.20.0; the client/server skew
+that fix #1 of 5.22.1 addressed is what makes that safe to leave for now.
+
+### Sampling a palette is not the same as reading it against its background
+
+5.22.1 wrote down the reference screenshot's colours and used them literally.
+The wood came out right and roughly half the writing on it disappeared: the
+daily-quest line, the "Donating is always optional" blurb and the rate caption
+were all `CreamDim` **#BCAE9A**, and the headings a saturated **#E8A83A** — both
+within a hair of the wood's own luminance. Mid-tone text on a mid-tone ground.
+
+The game gets away with those exact colours because it does two things this
+panel wasn't: it puts text on a **darker ground** than its frame, and it
+**outlines** it. So:
+
+- **Body and secondary text are near-white.** Against a mid-tone, only
+  near-white or near-black has any contrast, and near-black on wood would read
+  as a different UI. `Cream` #F8F4EC, `CreamDim` #E5DCCB (was #BCAE9A).
+- **`ShadowLabel`** draws the accent styles twice — near-black at a 1px offset,
+  then the real colour — which is IMGUI's version of the outline the game's TMP
+  text carries. Applied to `_hdr`, `_catHdr`, `_pillOn`/`_pillOff` and `_owned`;
+  body text is near-white and reads unaided, so it doesn't pay the cost.
+  `GUI.contentColor` multiplies, so blackening it and restoring hands any outer
+  tint (`DrawResultModal` tints its title) straight back for the real pass.
+- **The rate callout stops using the panel sprite.** Gold on that wood is gold
+  on a mid-tone; it now sits in a dark recess with the frame's tan border, the
+  way the game frames its own stat blocks. It's the one number a donor is
+  actually looking for.
+- Warm accents were all brightened: `Gold` #F6BE52, `Amber` #FCC77A, plus named
+  `Green` and `Link` entries so those stop being magic numbers at the call site.
+
+### Every heading was in italics
+
+`PickFont` matches on substrings, so `"AveriaSerifLibre-Bold"` also matched
+**`AveriaSerifLibre-BoldItalic`** — and since the bold face is what `_hdr`,
+`_btnPrimary`, `_codeBox`, `_catHdr` and `_rateBox` all use, every heading, the
+primary button and the rate callout rendered slanted while body text stayed
+upright. Faces whose name contains "italic" or "oblique" are now excluded
+outright; the two styles that genuinely want a slant ask for it through
+`FontStyle.Italic`.
+
+## Plugin 5.22.1 — two corrections to 5.22.0
+
+Backend unaffected. 5.22.0 was deployed to HB Test and never published; both
+faults below were found by running it.
+
+### "Purchase Unconfirmed" on a purchase that succeeded
+
+5.22.0 moved the purchase verdict onto a `__BUYRES__` control line and made the
+client wait for it — **including from servers that have never heard of it**. The
+dedicated server is on 5.21.1, which replies with a plain sentence and nothing
+else, so `_pendingBuySku` stayed armed through the whole 40 s window and the
+panel announced "Purchase Unconfirmed" for a spend that had plainly gone
+through. 5.22.0 replaced one false verdict with another.
+
+The mistake was making a client depend on a message it could not be sure the
+server knew how to send. Both directions of the skew are real here — a
+Thunderstore client is on 5.20.0 while this server may be on anything — so both
+now work:
+
+- **Wire format changed.** The marker no longer carries the text. The server
+  sends the human sentence *first*, then a bare `__BUYRES__:ok|fail|hold`. A
+  pre-5.22 client consumes the sentence exactly as it always did (the marker is
+  a stray log line, not a modal full of wire format).
+- **The client reads a plain line as the verdict again**, with the old
+  `StartsWith("Purchased")` heuristic, and lets a marker that follows re-label
+  it. On a 5.21.x server the heuristic is the answer; on 5.22.1 the marker
+  corrects it within the same RPC burst.
+- `_lastPlainMsg` / `_lastPlainAt` hold the most recent plain line for
+  `LateVerdictSeconds`, which also means a verdict arriving after the player
+  dismissed the modal — an automatic refund — gets promoted into a fresh modal
+  instead of being buried in the message log.
+
+### The panel came out orange
+
+Three compounding causes, in descending order of blame:
+
+1. **`_line` was doing two jobs.** It is the 1 px rule between sections *and*
+   the full-screen dim behind every modal. 5.22.0 retinted it to the extracted
+   accent colour at 0.35 alpha — so opening any modal washed the entire screen
+   in translucent gold. Split: `_line` stays the rule, new `_scrim` is
+   near-black at 0.62 and shares nothing with it.
+2. **Synthetic brightening.** `_btnActive` multiplied the button texture by
+   **1.5×** and `_btnPrimary` by 1.45× toward gold, on top of `Brighten(accent,
+   1.25f)` text. In gamma space that blows warm brown straight out to orange.
+   Gone: Valheim has no gold slab anywhere in its UI — its own Craft button is
+   the same wood as every other button. The active tab and the primary action
+   are now marked by **gold text**, with at most a 1.08× nudge to the wood.
+3. **Colours were extracted.** `HeaderColor` came from whatever the largest
+   `TMP_Text` under `m_player` happened to be, and `TextColor` from the most
+   common one, so one odd label re-tinted the whole panel. The palette is now
+   written down in `ValheimTheme` — sampled from the crafting/inventory panel:
+   `Wood`, `WoodDark`, `WoodLight`, `Trim`, `Gold`, `Cream`, `CreamDim`,
+   `Amber`. **Sizes are still measured** from the live UI, because those really
+   do vary with resolution and GUI scale; colours do not.
+
+Three more things came out of looking at this, all defensive:
+
+- **Colour-space round trip fixed.** `FromSprite` blitted into a
+  `RenderTextureReadWrite.Linear` target. Valheim renders linear, so sampling an
+  sRGB atlas converts to linear on read; a Linear target stores that raw, and
+  IMGUI decodes it as sRGB again when drawing — a double conversion that shifts
+  every colour. `Default` resolves to sRGB in a linear project and round-trips
+  the sprite back to the bytes it started as.
+- **`ValheimTheme.Plausible`** rejects an extracted skin that comes back washed
+  out, red-cast or nearly transparent, logging what it saw and falling back to
+  the written-down palette. The failure mode of a bad extraction is a panel that
+  is loud and wrong rather than obviously broken, and nobody catches a colour
+  cast by reading code.
+- **`_bgFill`.** The game composites panels from a backdrop plus a border
+  sprite, so the sprite we lift may be frame-only with a see-through middle —
+  which would put panel text straight over the running game. `DrawPanel` lays
+  opaque wood down first, inset 2 px so the frame's edge covers it.
+
+New config key **`panel_use_game_skin`** (default on) turns sprite extraction
+off entirely, leaving the written-down palette. It exists because the extraction
+reads a live UI hierarchy this mod does not own: if a future Valheim build
+reshuffles the inventory and the heuristics pick the wrong sprite, an operator
+can switch it off without waiting for a release. Font and type sizes are still
+read from the game either way.
+
+## Plugin 5.22.0 — a debit is never left stranded, and the panel wears the game's skin
+
+Backend unaffected — no new endpoint, no schema change, no minimum version.
+**Both halves of the plugin matter this time:** the spend/refund logic is
+server-side, the theme and the result modal are client-side, so a server on
+5.22.0 with clients on 5.20.0 gets the money fix and none of the UI, and the
+reverse gets neither.
+
+### "Purchase failed" while the coins were gone
+
+The report was a purchase that announced failure and debited anyway. Four
+distinct paths produced it, and they are closed in four different places.
+
+**1. The client's own clock beat the server's.** `DrawConfirmModal` armed
+`_pendingBuyDeadline` at **12 s**. The server's HTTP call to the backend has a
+**15 s** timeout (`BackendClient.Send`), and Fly.io stops idle machines, so a
+cold start regularly pushed a perfectly successful `/api/spend` past 12 s. The
+panel had already painted "Purchase Failed / No response from the server" by
+the time the 200 came back, debit included. The window is now
+`BuyReplyTimeoutSeconds = 40 s` — chosen to exceed the server's *whole* worst
+case (two 15 s attempts plus the retry gap), because a client deadline shorter
+than the server's is guaranteed to lie eventually.
+
+**2. A lost reply was read as a failed spend.** The debit commits the instant
+the backend answers 200; if that answer never arrives, the old code reported a
+flat failure and walked away from a spend that had already happened. The POST
+is now retried with the **same idempotency key** (`BackendClient.PostWithRetry`),
+which is the only way to find out what actually happened — the backend either
+commits once or answers `duplicate`. Retries stop at any 4xx
+(`BackendClient.IsDefiniteRefusal`): that is the backend saying no, and
+`/api/spend` rolls its whole transaction back on the way out, so nothing was
+charged. A 200 whose body failed to parse is deliberately *not* a refusal: the
+debit landed, and only a retry reveals it.
+
+**3. `duplicate` refused to deliver the goods.** The old branch treated it as
+"an earlier attempt already applied the effect" and skipped `ApplyEffect`. That
+reading was never possible: `key` is a fresh GUID minted per `Buy` call and
+shared with nobody, so the only request that can carry it is an earlier attempt
+of *this* purchase — one whose reply we never saw, and whose effect we therefore
+never applied. Before the retry existed the branch was simply unreachable; with
+it, the branch is the success path. `ok` and `duplicate` now mean the same thing
+downstream: the coins for this key are spent exactly once, deliver.
+
+**4. The effect failed after the debit and we just said so.**
+`"X was charged but no items could be spawned (bad prefab id?)"` is an accurate
+sentence and a terrible outcome. `ApplyEffect` now reports `delivered`, and an
+undelivered purchase is **refunded** through `/api/admin/grant` — which bumps
+`players.total_coins` inside the same transaction that writes the grant row, so
+the balance is whole immediately, the player gets the usual "+N Valcoins" toast
+from `GrantPoller`, and the correction is in the ledger where an operator can
+see it. The refund gets 4 attempts; if it still fails, the player is told to
+quote the SKU id to an admin and the failure is logged as an error with
+everything needed to settle it by hand.
+
+### The panel stops guessing what the server meant
+
+`OnServerMessage` classified purchase outcomes with
+`msg.StartsWith("Purchased") || msg.Contains("was already processed")`. Every
+wording outside that pair rendered as **Purchase Failed** — including the
+"charged but not delivered" line, i.e. the panel labelled the one genuinely
+money-losing case with the one word that made players stop checking.
+
+The server now states the verdict: `__BUYRES__:ok|fail|hold:<text>`.
+`hold` is a real third state and is never dressed up as either of the others —
+it is "we could not establish what happened", and it is what the unresolved-spend
+path and the client-side timeout both report. `fail` is now a promise rather
+than a description: nothing was charged, or it was charged and refunded, so the
+modal carries a flat **"No Valcoins were taken."** under it.
+
+A **"Processing Purchase"** modal covers the wait, with the elapsed seconds and
+a line telling the player not to buy again. Without it the 40 s window would
+read as a dead button — which is what drove the double-clicking in the first
+place.
+
+### armor_vfx: the one effect the server cannot check
+
+An aura binds to whatever armour the buyer has equipped, and that is state only
+the buyer's client holds. `ArmorVfx.ApplyToEquipped` fails with "you have no
+head armor equipped" — after the debit. Two layers now:
+
+- `DrawConfirmModal` computes a `blocker` on the client and greys out "Yes, buy"
+  with the reason, so the common case never reaches the ledger at all.
+- If it slips through anyway (unequipped between confirm and reply), the client
+  reports `buyfail:<sku>` and the server refunds. A client-driven refund is a
+  client-driven way to print money, so each `armor_vfx` purchase mints a
+  **one-shot 90 s ticket** server-side (`ShopHandler.ReportApplyFailed`); a
+  `buyfail` with no live ticket behind it refunds nothing and is logged.
+  `__ARMORVFX__` gained a third field, the SKU id, to carry this; the parse
+  tolerates the old two-field form.
+
+### Gifts, same defect
+
+`GiftFlow` had the identical shape — `/api/transfer` debits on its 200, and a
+lost reply was reported as "Gift failed" to a sender whose coins had moved. It
+now goes through the same retry, and distinguishes a refusal ("no Valcoins were
+taken") from an unknown outcome.
+
+### The panel is drawn with the game's actual UI
+
+New `ValheimTheme.cs` reads the live `InventoryGui` and hands `DonationPanel`
+the real assets instead of approximations of them:
+
+- **Panel and buttons.** The largest 9-sliced `Image` under `m_player` is the
+  inventory frame; `m_takeAllButton` is the button (the same one
+  `InventoryMenuButton` already clones, so the panel and that entry point cannot
+  drift apart). IMGUI cannot draw a `Sprite`, and the UI atlas is not
+  CPU-readable, so each sprite is copied through a `RenderTexture` blit into a
+  small readable `Texture2D`. The sprite's own border becomes `GUIStyle.border`,
+  which is what keeps the carved corners from stretching. Button states honour
+  whichever transition the button actually uses — `SpriteSwap` sprites if it has
+  them, otherwise its `ColorBlock` multiplied into the pixels.
+- **Type.** The body size is the size the inventory uses *most*, the header size
+  is its largest label, and both are multiplied by the live canvas
+  `scaleFactor`, because IMGUI works in screen pixels and the game's UI works in
+  canvas units. That is what makes the panel match at any resolution or GUI-scale
+  setting rather than at 1080p only. Colours come from those same labels.
+- **Content inset** follows the real frame's border instead of a flat 14 px, so
+  text no longer sits on top of the carving.
+
+Re-extraction is triggered by a change in canvas scale, and `ValheimTheme.Version`
+bumps; `DonationPanel` rebuilds its `GUIStyles` when that moves, so changing
+resolution or GUI scale re-themes the panel live. **Every piece degrades on its
+own** — each extraction step is wrapped separately, and any field that comes back
+null falls back to the previous hand-drawn skin, so a future Valheim UI
+restructure costs the theme and never the panel.
 
 ## Plugin 5.21.2 — a one-time quest is not on a timer
 

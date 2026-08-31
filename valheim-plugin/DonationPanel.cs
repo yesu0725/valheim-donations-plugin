@@ -86,14 +86,35 @@ public class DonationPanel : MonoBehaviour
     private string _zoomImage;
     private string _zoomCaption;
 
-    // Purchase-result modal — after "Yes" we arm a pending purchase; the next
-    // plain server reply becomes a success/failure modal (with a timeout
-    // fallback if the server never answers, e.g. connection dropped mid-buy).
+    // Purchase-result modal. After "Yes" a purchase is armed and a "working on
+    // it" modal goes up; the server's __BUYRES__ reply turns it into the outcome.
     private string _pendingBuySku;
+    private float  _pendingBuyStarted;
     private float  _pendingBuyDeadline;
     private string _resultText;      // non-null => result modal is up
-    private bool   _resultSuccess;
+    private BuyOutcome _resultKind;
     private string _resultExtra;     // e.g. armor-effect apply outcome
+
+    // What the server says became of a purchase. "Unknown" is a real answer and
+    // must never be dressed up as either of the others: it is the state where the
+    // coins may or may not have moved, and telling the player it failed while
+    // their balance dropped is the exact bug this replaced.
+    private enum BuyOutcome { Success, Failed, Unknown }
+
+    // How long to wait for a purchase verdict before giving up on it. The server
+    // may spend two BackendClient timeouts (15s each) plus a retry gap resolving
+    // an unanswered spend, and it MUST be allowed to finish: this was 12s, so it
+    // expired first and painted "Purchase Failed" over a spend that then went
+    // through and took the coins. Whatever this number is, it has to be larger
+    // than the server's own worst case, never smaller.
+    private const float BuyReplyTimeoutSeconds = 40f;
+
+    // The last plain line the server sent, held so the verdict marker that
+    // follows it can label it. Also how a verdict that arrives after the player
+    // dismissed the modal (an automatic refund) still gets shown.
+    private string _lastPlainMsg;
+    private float  _lastPlainAt;
+    private const float LateVerdictSeconds = 8f;
 
     // Buffer for server-pushed messages (buy/gift/admin results).
     private readonly List<string> _log = new List<string>();
@@ -105,9 +126,19 @@ public class DonationPanel : MonoBehaviour
     private string _adminTarget = "", _adminAmount = "";
 
     private GUIStyle _bg, _hdr, _sub, _btn, _btnActive, _btnDim, _btnPrimary,
-                     _line, _logLine, _label, _codeBox, _linkBtn, _pillOn, _pillOff,
+                     _bgFill, _line, _scrim, _logLine, _label, _codeBox, _linkBtn, _pillOn, _pillOff,
                      _owned, _catHdr, _dim, _rateBox, _rateSub;
     private bool _stylesReady;
+
+    // ValheimTheme.Version the current styles were built from. They are rebuilt
+    // when it moves, so a resolution or GUI-scale change re-themes the panel
+    // without a restart.
+    private int _styleVersion = -1;
+
+    // How far content sits inside the panel frame. Derived from the 9-slice
+    // border of the game's own panel sprite, because that frame is carved and
+    // chunky -- the old flat 14px inset would have laid text on top of it.
+    private int _contentInset = 14;
 
     private float _lastStateFetch;
     private const float AutoRefreshSeconds = 20f;
@@ -181,6 +212,10 @@ public class DonationPanel : MonoBehaviour
             Cursor.visible   = true;
             DonationUiState.SetMouseCapture(false);
             RefreshStateSoon();
+            // Deliberately here and not in OnGUI: extraction blits through a
+            // RenderTexture, and doing that inside the IMGUI render loop means
+            // swapping the active render target out from under the GUI.
+            ValheimTheme.Ensure();
         }
         else if (_wasOpen)
         {
@@ -204,6 +239,7 @@ public class DonationPanel : MonoBehaviour
         if (_open)
         {
             RefreshStateSoon(force: true);
+            ValheimTheme.Ensure();   // so the first frame is already themed
             if (!_askedWhoAmI) { RpcLayer.SendAction("whoami"); _askedWhoAmI = true; }
         }
     }
@@ -284,6 +320,7 @@ public class DonationPanel : MonoBehaviour
     private const string DonateOkPrefix     = "__DONATE__:";
     private const string DonateErrPrefix    = "__DONATE_ERR__:";
     private const string ArmorVfxPrefix     = "__ARMORVFX__:";
+    private const string BuyResultPrefix    = "__BUYRES__:";
 
     private void OnServerMessage(string msg)
     {
@@ -318,30 +355,80 @@ public class DonationPanel : MonoBehaviour
 
         if (msg.StartsWith(ArmorVfxPrefix))
         {
-            // Format: <aura>:<slot>. The spend already succeeded server-side;
-            // apply the cosmetic + rename on this (the buyer's) client, and log
-            // whatever it reports (success line or "equip a piece first").
-            var body = msg.Substring(ArmorVfxPrefix.Length).Split(new[] { ':' }, 2);
+            // Format: <aura>:<slot>[:<sku>]. The spend already succeeded
+            // server-side; apply the cosmetic + rename on this (the buyer's)
+            // client, and log whatever it reports.
+            var vfx = msg.Substring(ArmorVfxPrefix.Length).Split(new[] { ':' }, 3);
             string m;
-            if (body.Length == 2) ArmorVfx.ApplyToEquipped(body[0], body[1], out m);
+            bool applied = false;
+            if (vfx.Length >= 2) applied = ArmorVfx.ApplyToEquipped(vfx[0], vfx[1], out m);
             else m = "Armor effect could not be applied.";
-            _log.Add(m);
-            if (_log.Count > LogCap) _log.RemoveAt(0);
+
+            // Only this client can know whether the aura landed, because only this
+            // client knows what is equipped. If it didn't, say so — the server
+            // holds a one-shot ticket for exactly this and refunds on hearing it.
+            if (!applied && vfx.Length >= 3 && !string.IsNullOrEmpty(vfx[2]))
+                RpcLayer.SendAction("buyfail:" + vfx[2]);
+
+            PushLog(m);
             // Fold the apply outcome into the pending purchase-result modal.
             if (_pendingBuySku != null) _resultExtra = m;
             return;
         }
 
-        // Everything else is a buy/gift/admin result line.
-        _log.Add(msg);
-        if (_log.Count > LogCap) _log.RemoveAt(0);
+        // The server's verdict on the line it just sent. It carries no text of its
+        // own (see ShopHandler.ResultPrefix) — it re-labels the message already
+        // shown, which is what lets a server older than this client still work.
+        if (msg.StartsWith(BuyResultPrefix))
+        {
+            string kind = msg.Substring(BuyResultPrefix.Length).Trim();
+            var verdict = kind == "ok"   ? BuyOutcome.Success
+                        : kind == "hold" ? BuyOutcome.Unknown
+                                         : BuyOutcome.Failed;
 
-        // If a purchase is awaiting its outcome, this reply is it — surface it
-        // as a modal (success = the known "it worked" phrasings from ShopHandler).
+            // Normally this upgrades the provisional reading of the line that
+            // arrived a moment ago. It also covers a verdict that lands after the
+            // player dismissed the modal — an automatic refund, say — by promoting
+            // that line into a fresh modal rather than leaving it buried in the log.
+            if (!string.IsNullOrEmpty(_lastPlainMsg)
+                && Time.realtimeSinceStartup - _lastPlainAt < LateVerdictSeconds)
+            {
+                _pendingBuySku = null;
+                _resultKind = verdict;
+                _resultText = string.IsNullOrEmpty(_resultExtra)
+                    ? _lastPlainMsg : _lastPlainMsg + "\n\n" + _resultExtra;
+                _resultExtra = null;
+                _lastPlainMsg = null;
+            }
+            else if (_resultText != null)
+            {
+                _resultKind = verdict;   // modal still up from that same line
+            }
+            RefreshStateSoon();
+            return;
+        }
+
+        // A plain line: a buy/gift/admin result, or the sentence a verdict marker
+        // is about to label.
+        PushLog(msg);
+        _lastPlainMsg = msg;
+        _lastPlainAt  = Time.realtimeSinceStartup;
+
+        // If a purchase is waiting on an answer, this line IS the answer — read it
+        // now with the pre-5.22 heuristic and let the marker correct the label if
+        // one follows.
+        //
+        // THIS IS WHAT A 5.21.x SERVER SENDS, AND ONLY THIS. Without this branch a
+        // 5.22 client on an older server sat through the whole 40s window and then
+        // announced "Purchase Unconfirmed" for a purchase that had plainly
+        // succeeded and been paid for — the marker it was waiting for was never
+        // coming. A client must never depend on a server-side message it cannot be
+        // sure the server knows how to send.
         if (_pendingBuySku != null)
         {
             _pendingBuySku = null;
-            _resultSuccess = msg.StartsWith("Purchased") || msg.Contains("was already processed");
+            _resultKind = (msg.StartsWith("Purchased") || msg.Contains("was already processed"))
+                ? BuyOutcome.Success : BuyOutcome.Failed;
             _resultText = string.IsNullOrEmpty(_resultExtra) ? msg : msg + "\n\n" + _resultExtra;
             _resultExtra = null;
         }
@@ -350,130 +437,240 @@ public class DonationPanel : MonoBehaviour
 
     // ─── styling ──────────────────────────────────────────────────────────
 
+    // Builds every GUIStyle the panel uses.
+    //
+    // The look is NOT authored here. ValheimTheme reads the player inventory
+    // screen and hands over the game's real panel sprite, its real button sprite
+    // in all four states, its serif font, its text colours and the font sizes it
+    // renders at (already converted to screen pixels for the player's resolution
+    // and GUI scale). This method's whole job is to spend those on the right
+    // controls, and to fall back to the old hand-drawn approximation field by
+    // field for anything the game did not give up.
+    //
+    // Called again whenever ValheimTheme.Version changes, which is how a
+    // mid-session resolution or GUI-scale change re-themes the panel live.
     private void InitStyles()
     {
-        // Dark-wood panel with a bronze frame (Valheim-style).
+        int body   = ValheimTheme.BodySize;
+        int small  = ValheimTheme.SmallSize;
+        int header = ValheimTheme.HeaderSize;
+        int btnTxt = ValheimTheme.ButtonSize;
+
+        var text   = ValheimTheme.TextColor;        // cream
+        var dim    = ValheimTheme.DimColor;
+        var gold   = ValheimTheme.HeaderColor;
+        var onBtn  = ValheimTheme.ButtonTextColor;
+
+        // Panel: the inventory's own wood frame, 9-sliced by its own border so the
+        // carved corners stay the right size however tall the panel gets.
         _bg = new GUIStyle(GUI.skin.box);
-        _bg.normal.background = BorderTex(new Color(0.09f, 0.08f, 0.06f, 0.985f),
-                                          new Color(0.42f, 0.32f, 0.16f, 1f), 2);
-        _bg.border = new RectOffset(3, 3, 3, 3);
-        _bg.padding = new RectOffset(14, 14, 14, 14);
+        if (ValheimTheme.PanelTex != null)
+        {
+            _bg.normal.background = ValheimTheme.PanelTex;
+            _bg.border = ValheimTheme.PanelBorder;
+            var b = ValheimTheme.PanelBorder;
+            _contentInset = Mathf.Clamp(Mathf.Max(Mathf.Max(b.left, b.right), Mathf.Max(b.top, b.bottom)) + 2, 14, 30);
+        }
+        else
+        {
+            _bg.normal.background = BorderTex(ValheimTheme.Wood, ValheimTheme.Trim, 3, 24);
+            _bg.border = new RectOffset(4, 4, 4, 4);
+            _contentInset = 16;
+        }
+        _bg.padding = new RectOffset(_contentInset, _contentInset, _contentInset, _contentInset);
 
-        _hdr = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold };
-        _hdr.normal.textColor = new Color(0.87f, 0.72f, 0.42f);
+        // Opaque wood laid down under the frame. The game composites its panels
+        // from a backdrop plus a border sprite, so the sprite we lift may well be
+        // frame-only with a see-through middle — which would put the panel's text
+        // straight over the running game. Painting the fill ourselves makes the
+        // panel opaque whatever we picked up, and costs one extra box per draw.
+        _bgFill = new GUIStyle();
+        _bgFill.normal.background = SolidTex(ValheimTheme.Wood);
 
-        _sub = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Italic, wordWrap = true };
-        _sub.normal.textColor = new Color(0.75f, 0.72f, 0.62f);
+        _hdr = new GUIStyle(GUI.skin.label) { fontSize = header, fontStyle = FontStyle.Bold };
+        _hdr.normal.textColor = gold;
 
-        // Dark bronze-trimmed button; brightens on hover.
-        _btn = new GUIStyle(GUI.skin.button) { fontSize = 15 };
-        _btn.border = new RectOffset(3, 3, 3, 3);
-        _btn.padding = new RectOffset(10, 10, 7, 7);
-        _btn.normal.background = BorderTex(new Color(0.17f, 0.14f, 0.10f, 1f),
-                                          new Color(0.46f, 0.36f, 0.19f, 1f), 2);
-        _btn.hover.background  = BorderTex(new Color(0.26f, 0.21f, 0.13f, 1f),
-                                          new Color(0.68f, 0.53f, 0.27f, 1f), 2);
-        _btn.active.background = _btn.hover.background;
-        _btn.normal.textColor = new Color(0.92f, 0.86f, 0.72f);
-        _btn.hover.textColor  = new Color(1f, 0.96f, 0.86f);
+        _sub = new GUIStyle(GUI.skin.label) { fontSize = small, fontStyle = FontStyle.Italic, wordWrap = true };
+        _sub.normal.textColor = dim;
 
-        // Selected tab: filled bronze.
+        // Buttons: the inventory's "Take All" button, in its own four states.
+        _btn = new GUIStyle(GUI.skin.button) { fontSize = btnTxt };
+        if (ValheimTheme.ButtonTex != null)
+        {
+            _btn.normal.background = ValheimTheme.ButtonTex;
+            _btn.hover.background  = ValheimTheme.ButtonHoverTex ?? ValheimTheme.ButtonTex;
+            _btn.active.background = ValheimTheme.ButtonActiveTex ?? ValheimTheme.ButtonHoverTex;
+            _btn.border = ValheimTheme.ButtonBorder;
+            var bb = ValheimTheme.ButtonBorder;
+            _btn.padding = new RectOffset(Mathf.Max(10, bb.left), Mathf.Max(10, bb.right), 6, 6);
+        }
+        else
+        {
+            _btn.border = new RectOffset(3, 3, 3, 3);
+            _btn.padding = new RectOffset(10, 10, 7, 7);
+            _btn.normal.background = BorderTex(ValheimTheme.WoodDark,  ValheimTheme.Trim, 2);
+            _btn.hover.background  = BorderTex(ValheimTheme.WoodLight, ValheimTheme.Trim, 2);
+            _btn.active.background = BorderTex(ValheimTheme.WoodDark,  ValheimTheme.Gold, 2);
+        }
+        _btn.normal.textColor = onBtn;
+        _btn.hover.textColor  = onBtn;
+        _btn.active.textColor = onBtn;
+
+        // Selected tab. In the game, an active tab is marked by GOLD TEXT and a
+        // gold edge, not by a brighter slab — the wood stays wood. An earlier cut
+        // multiplied the button texture by 1.5 to make it "pop", which is most of
+        // why the panel came out glowing orange; the tint here is a nudge, and the
+        // colour does the talking.
         _btnActive = new GUIStyle(_btn);
-        _btnActive.normal.background = BorderTex(new Color(0.5f, 0.38f, 0.18f, 1f),
-                                                new Color(0.72f, 0.57f, 0.29f, 1f), 2);
-        _btnActive.hover.background = _btnActive.normal.background;
-        _btnActive.normal.textColor = new Color(1f, 0.97f, 0.88f);
-        _btnActive.hover.textColor  = Color.white;
+        var litTab = ValheimTheme.ButtonVariant(new Color(1.08f, 1.04f, 0.98f, 1f));
+        _btnActive.normal.background = litTab
+            ?? BorderTex(ValheimTheme.WoodLight, ValheimTheme.Gold, 2);
+        _btnActive.hover.background  = _btnActive.normal.background;
+        _btnActive.active.background = _btnActive.normal.background;
+        _btnActive.normal.textColor  = gold;
+        _btnActive.hover.textColor   = gold;
+        _btnActive.active.textColor  = gold;
 
-        // Disabled/inert button (owned/locked/capped states).
+        // Disabled/inert button (owned/locked/capped states) — the game's own
+        // disabled button colour, so it greys out exactly like a vanilla one.
         _btnDim = new GUIStyle(_btn);
-        _btnDim.normal.background = BorderTex(new Color(0.13f, 0.12f, 0.10f, 1f),
-                                             new Color(0.30f, 0.26f, 0.18f, 1f), 2);
-        _btnDim.hover.background = _btnDim.normal.background;
-        _btnDim.normal.textColor = new Color(0.5f, 0.48f, 0.42f);
-        _btnDim.hover.textColor  = new Color(0.5f, 0.48f, 0.42f);
+        _btnDim.normal.background = ValheimTheme.ButtonDimTex
+            ?? BorderTex(new Color(0.271f, 0.169f, 0.118f, 1f),
+                        new Color(0.443f, 0.353f, 0.243f, 1f), 2);
+        _btnDim.hover.background  = _btnDim.normal.background;
+        _btnDim.active.background = _btnDim.normal.background;
+        _btnDim.normal.textColor  = new Color(text.r * 0.55f, text.g * 0.54f, text.b * 0.5f, 1f);
+        _btnDim.hover.textColor   = _btnDim.normal.textColor;
 
-        // Prominent, high-contrast primary action (the donate button).
-        // Vertical padding kept modest so the label sits centered at a normal
-        // button height instead of floating in an oversized gold slab.
-        _btnPrimary = new GUIStyle(GUI.skin.button) { fontSize = 16, fontStyle = FontStyle.Bold };
+        // Primary action (donate, confirm, OK). Vanilla's own "Craft" button is
+        // the SAME wood as every other button — Valheim has no gold slab anywhere
+        // in its UI, and painting one made this panel look imported from another
+        // game. It is the ordinary button with gold, bold text.
+        _btnPrimary = new GUIStyle(_btn) { fontSize = btnTxt + 1, fontStyle = FontStyle.Bold };
         _btnPrimary.alignment = TextAnchor.MiddleCenter;
-        _btnPrimary.border = new RectOffset(3, 3, 3, 3);
-        _btnPrimary.padding = new RectOffset(12, 12, 6, 6);
-        _btnPrimary.normal.background = BorderTex(new Color(0.78f, 0.6f, 0.22f, 1f),
-                                                 new Color(0.5f, 0.36f, 0.12f, 1f), 2);
-        _btnPrimary.normal.textColor = new Color(0.12f, 0.08f, 0.02f);   // near-black on gold, high contrast
-        _btnPrimary.hover.background = BorderTex(new Color(0.9f, 0.71f, 0.28f, 1f),
-                                                new Color(0.6f, 0.44f, 0.16f, 1f), 2);
-        _btnPrimary.hover.textColor = Color.black;
-        _btnPrimary.active.background = _btnPrimary.normal.background;
+        _btnPrimary.normal.textColor = gold;
+        _btnPrimary.hover.textColor  = Brighten(gold, 1.08f);
+        _btnPrimary.active.textColor = gold;
 
+        // Hairline rule between sections: the frame's tan, kept faint.
         _line = new GUIStyle();
-        _line.normal.background = SolidTex(new Color(0.3f, 0.25f, 0.18f, 0.6f));
+        _line.normal.background = SolidTex(new Color(ValheimTheme.Trim.r, ValheimTheme.Trim.g,
+                                                     ValheimTheme.Trim.b, 0.28f));
 
-        _logLine = new GUIStyle(GUI.skin.label) { fontSize = 14, wordWrap = true };
-        _logLine.normal.textColor = new Color(0.9f, 0.9f, 0.85f);
+        // Full-screen dim behind a modal. This used to be _line, which is how a
+        // colour meant for a 1px rule ended up washed across the entire screen —
+        // once the rule took the frame's warm tan, every modal tinted the whole
+        // game orange. A scrim's only job is to darken; it is near-black on
+        // purpose and shares nothing with the rule.
+        _scrim = new GUIStyle();
+        _scrim.normal.background = SolidTex(new Color(0.04f, 0.03f, 0.02f, 0.62f));
 
-        _label = new GUIStyle(GUI.skin.label) { fontSize = 15, wordWrap = true };
-        _label.normal.textColor = new Color(0.88f, 0.85f, 0.78f);
+        _logLine = new GUIStyle(GUI.skin.label) { fontSize = small + 1, wordWrap = true };
+        _logLine.normal.textColor = text;
+
+        _label = new GUIStyle(GUI.skin.label) { fontSize = body, wordWrap = true };
+        _label.normal.textColor = text;
 
         // Green "Already Purchased" marker for owned one-time perks.
-        _owned = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
-        _owned.normal.textColor = new Color(0.5f, 0.85f, 0.45f);
+        _owned = new GUIStyle(GUI.skin.label) { fontSize = small, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
+        _owned.normal.textColor = ValheimTheme.Green;
 
-        // The donation code, shown big and bright in a dark box.
-        _codeBox = new GUIStyle(GUI.skin.box) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
-        _codeBox.normal.background = SolidTex(new Color(0.05f, 0.05f, 0.04f, 1f));
-        _codeBox.normal.textColor = new Color(1f, 0.86f, 0.45f);
+        // The donation code, shown big in a dark recessed box.
+        _codeBox = new GUIStyle(GUI.skin.box) { fontSize = header + 2, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+        _codeBox.normal.background = SolidTex(new Color(0.13f, 0.08f, 0.05f, 1f));
+        _codeBox.normal.textColor = gold;
         _codeBox.padding = new RectOffset(8, 8, 10, 10);
 
         // "Terms of Use" rendered as a link.
-        _linkBtn = new GUIStyle(GUI.skin.label) { fontSize = 14 };
-        _linkBtn.normal.textColor = new Color(0.55f, 0.75f, 0.95f);
-        _linkBtn.hover.textColor = new Color(0.75f, 0.88f, 1f);
+        _linkBtn = new GUIStyle(GUI.skin.label) { fontSize = small };
+        _linkBtn.normal.textColor = ValheimTheme.Link;
+        _linkBtn.hover.textColor = Brighten(ValheimTheme.Link, 1.1f);
 
-        _pillOn = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
-        _pillOn.normal.textColor = new Color(0.5f, 0.85f, 0.45f);
+        _pillOn = new GUIStyle(GUI.skin.label) { fontSize = small, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
+        _pillOn.normal.textColor = ValheimTheme.Green;
 
         _pillOff = new GUIStyle(_pillOn);
-        _pillOff.normal.textColor = new Color(0.85f, 0.6f, 0.3f);
+        _pillOff.normal.textColor = ValheimTheme.Amber;
 
-        // Shop category header — gold, bold, all-caps look (caller upper-cases).
-        _catHdr = new GUIStyle(GUI.skin.label) { fontSize = 17, fontStyle = FontStyle.Bold };
-        _catHdr.normal.textColor = new Color(0.85f, 0.68f, 0.34f);
+        // Shop category header — gold, bold, all-caps look (caller upper-cases),
+        // matching the panel titles the game sets in that same gold.
+        _catHdr = new GUIStyle(GUI.skin.label) { fontSize = body + 2, fontStyle = FontStyle.Bold };
+        _catHdr.normal.textColor = gold;
 
         // Dim secondary line for auto-derived bundle contents.
-        _dim = new GUIStyle(GUI.skin.label) { fontSize = 13, wordWrap = true };
-        _dim.normal.textColor = new Color(0.62f, 0.60f, 0.53f);
+        _dim = new GUIStyle(GUI.skin.label) { fontSize = small, wordWrap = true };
+        _dim.normal.textColor = dim;
 
         // Exchange-rate callout on the Donate tab — the one number donors most
-        // want before they open their wallet, so it gets a bright gold framed
-        // box rather than the usual muted helper-text treatment.
-        _rateBox = new GUIStyle(GUI.skin.box) { fontSize = 24, fontStyle = FontStyle.Bold,
+        // want before they open their wallet, so it gets the panel's own frame at
+        // display size rather than the usual muted helper-text treatment.
+        _rateBox = new GUIStyle(GUI.skin.box) { fontSize = header + 4, fontStyle = FontStyle.Bold,
                                                 alignment = TextAnchor.MiddleCenter, wordWrap = false };
-        _rateBox.normal.background = BorderTex(new Color(0.16f, 0.13f, 0.07f, 1f),
-                                               new Color(0.72f, 0.56f, 0.24f, 1f), 2);
-        _rateBox.normal.textColor = new Color(1f, 0.86f, 0.45f);
-        _rateBox.border = new RectOffset(3, 3, 3, 3);
+        // Deliberately NOT the panel sprite. Gold on that wood is gold on a
+        // mid-tone, which is the contrast this callout cannot afford to lose --
+        // it is the one number a donor is looking for. Dark recess, gold on it,
+        // the way the game frames its own stat blocks.
+        _rateBox.normal.background = BorderTex(new Color(0.145f, 0.090f, 0.055f, 0.95f),
+                                               ValheimTheme.Trim, 3, 24);
+        _rateBox.border = new RectOffset(4, 4, 4, 4);
+        _rateBox.normal.textColor = gold;
         _rateBox.padding = new RectOffset(10, 10, 12, 6);
 
         // Caption under the callout (inside the same visual block).
-        _rateSub = new GUIStyle(GUI.skin.label) { fontSize = 13, alignment = TextAnchor.MiddleCenter, wordWrap = true };
-        _rateSub.normal.textColor = new Color(0.75f, 0.72f, 0.62f);
+        _rateSub = new GUIStyle(GUI.skin.label) { fontSize = small, alignment = TextAnchor.MiddleCenter, wordWrap = true };
+        _rateSub.normal.textColor = dim;
 
-        // Swap every style over to Valheim's own font (if we found it) so the
-        // panel reads as part of the game. Serif metrics are a touch taller than
-        // the IMGUI default, so line heights get a hair more room — sizes above
-        // were chosen to stay clear of clipping either way.
-        var font = GameFont();
-        if (font != null)
-            foreach (var s in new[] { _hdr, _sub, _btn, _btnActive, _btnDim, _btnPrimary,
-                                      _logLine, _label, _codeBox, _linkBtn, _pillOn, _pillOff,
-                                      _owned, _catHdr, _dim, _rateBox, _rateSub })
-                s.font = font;
+        // Swap every style over to the game's own serif. Headers and buttons take
+        // the bold cut when the game has one loaded; everything else takes the
+        // body face and synthesizes weight through FontStyle as before.
+        var regular = ValheimTheme.Regular;
+        var bold    = ValheimTheme.Bold ?? regular;
+        if (regular != null)
+        {
+            foreach (var s in new[] { _sub, _btn, _btnDim, _logLine, _label, _linkBtn,
+                                      _pillOn, _pillOff, _owned, _dim, _rateSub })
+                s.font = regular;
+            foreach (var s in new[] { _hdr, _btnActive, _btnPrimary, _codeBox, _catHdr, _rateBox })
+                s.font = bold;
+        }
 
+        _styleVersion = ValheimTheme.Version;
         _stylesReady = true;
     }
+
+    // Valheim's own UI text carries a dark outline; that is what lets warm, light
+    // text sit on warm, light wood at all. IMGUI has no outline, so the accent
+    // styles draw twice — near-black at a one-pixel offset, then the real colour
+    // on top. Body text is near-white and reads on the wood unaided, so it does
+    // not pay this cost.
+    //
+    // GUI.contentColor MULTIPLIES the style's colour, so setting it to black
+    // blackens whatever the caller had set (DrawResultModal tints its title this
+    // way) and the restore hands that tint back for the real pass.
+    private static void ShadowLabel(string text, GUIStyle style, params GUILayoutOption[] opts)
+    {
+        var content = new GUIContent(text);
+        var r = GUILayoutUtility.GetRect(content, style, opts);
+
+        var prev = GUI.contentColor;
+        GUI.contentColor = new Color(0f, 0f, 0f, 0.8f);
+        GUI.Label(new Rect(r.x + 1f, r.y + 1f, r.width, r.height), content, style);
+        GUI.contentColor = prev;
+
+        GUI.Label(r, content, style);
+    }
+
+    // Wood first, then the frame over it — see the note on _bgFill. The fill is
+    // inset a couple of pixels so the frame's own edge always covers it, rather
+    // than a hard rectangle showing past a carved or rounded corner.
+    private void DrawPanel(Rect r)
+    {
+        GUI.Box(new Rect(r.x + 2f, r.y + 2f, r.width - 4f, r.height - 4f), GUIContent.none, _bgFill);
+        GUI.Box(r, GUIContent.none, _bg);
+    }
+
+    private static Color Brighten(Color c, float f)
+        => new Color(Mathf.Min(1f, c.r * f), Mathf.Min(1f, c.g * f), Mathf.Min(1f, c.b * f), c.a);
 
     private static Texture2D SolidTex(Color c)
     {
@@ -484,9 +681,11 @@ public class DonationPanel : MonoBehaviour
     }
 
     // A 9-slice-able panel/button texture: a solid fill with a `t`-pixel border,
-    // used with GUIStyle.border so the frame stays crisp at any size. Gives the
-    // IMGUI panel Valheim's dark-wood-with-bronze-trim look without needing the
-    // game's own UI sprites (which aren't reachable without Jotunn).
+    // used with GUIStyle.border so the frame stays crisp at any size. This is the
+    // fallback path, used when the game's own sprites couldn't be lifted (see
+    // ValheimTheme) — the colours passed in are the written-down Valheim palette,
+    // so it comes out flat where the real thing has grain, but never the wrong
+    // colour.
     private static Texture2D BorderTex(Color fill, Color border, int t = 2, int size = 16)
     {
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
@@ -501,46 +700,13 @@ public class DonationPanel : MonoBehaviour
         return tex;
     }
 
-    // Valheim's own UI font, so our text matches the game. Found among the
-    // loaded fonts by name (AveriaSerifLibre is the body serif; Norse the
-    // runic display face). Falls back to the IMGUI default if neither is
-    // present, so a font-name change in a future Valheim build just reverts to
-    // plain text rather than breaking.
-    private static Font _gameFont;
-    private static bool _gameFontSearched;
-    private static Font GameFont()
-    {
-        if (_gameFontSearched) return _gameFont;
-        _gameFontSearched = true;
-        try
-        {
-            var fonts = Resources.FindObjectsOfTypeAll<Font>();
-            // Prefer the regular serif for body text (headers synthesize bold via
-            // fontStyle); fall back through the runic display faces.
-            string[] prefs = { "AveriaSerifLibre-Regular", "AveriaSerifLibre", "Averia", "Norse" };
-            foreach (var pref in prefs)
-            {
-                foreach (var f in fonts)
-                    if (f != null && !string.IsNullOrEmpty(f.name)
-                        && f.name.IndexOf(pref, StringComparison.OrdinalIgnoreCase) >= 0)
-                    { _gameFont = f; break; }
-                if (_gameFont != null) break;
-            }
-            Debug.Log($"[Valcoin] UI font: {(_gameFont != null ? _gameFont.name : "default (Valheim font not found)")}");
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"[Valcoin] Font lookup failed: {ex.Message}");
-        }
-        return _gameFont;
-    }
 
     // ─── render ───────────────────────────────────────────────────────────
 
     private void OnGUI()
     {
         if (!_open) return;
-        if (!_stylesReady) InitStyles();
+        if (!_stylesReady || _styleVersion != ValheimTheme.Version) InitStyles();
 
         if (!ScreenIsClear())
         {
@@ -552,30 +718,36 @@ public class DonationPanel : MonoBehaviour
         float pw = Mathf.Min(PanelW, Screen.width - 40);
         float ph = Mathf.Min(PanelH, Screen.height - 40);
         var rect = new Rect((Screen.width - pw) / 2f, (Screen.height - ph) / 2f, pw, ph);
-        GUI.Box(rect, GUIContent.none, _bg);
+        DrawPanel(rect);
 
-        // Pending purchase that never got a reply → failure modal via timeout.
+        // A purchase that never got a verdict. This is NOT a failure — the server
+        // may have debited and lost the reply — so it is reported as unknown, and
+        // the panel refuses to guess which way it went.
         if (_pendingBuySku != null && Time.realtimeSinceStartup > _pendingBuyDeadline)
         {
             _pendingBuySku = null;
-            _resultSuccess = false;
-            _resultText = "No response from the server. Check your balance and the "
-                          + "message log before retrying - the purchase may still have gone through.";
+            _resultKind = BuyOutcome.Unknown;
+            _resultText = "The server never answered. Your Valcoins are most likely untouched, "
+                          + "but check your balance before trying again - and if it dropped without "
+                          + "the item arriving, tell an admin: every spend is in the ledger and can "
+                          + "be put right.";
         }
 
         // While a modal is up, disable + dim the panel behind it so its buttons
         // can't be clicked through the overlay (IMGUI renders disabled controls
         // greyed, which reads as a native modal backdrop).
-        bool modalOpen = _showTerms || _confirmSku != null || _resultText != null || _zoomImage != null;
+        bool modalOpen = _showTerms || _confirmSku != null || _resultText != null
+                         || _zoomImage != null || _pendingBuySku != null;
         GUI.enabled = !modalOpen;
 
-        GUILayout.BeginArea(new Rect(rect.x + 14, rect.y + 14, rect.width - 28, rect.height - 28));
+        GUILayout.BeginArea(new Rect(rect.x + _contentInset, rect.y + _contentInset,
+                                     rect.width - _contentInset * 2, rect.height - _contentInset * 2));
 
         // Header row: title + live/offline + close.
         GUILayout.BeginHorizontal();
-        GUILayout.Label("Valheim Donations", _hdr);
+        ShadowLabel("Valheim Donations", _hdr);
         GUILayout.FlexibleSpace();
-        GUILayout.Label(_online ? "Live" : "Offline", _online ? _pillOn : _pillOff, GUILayout.Width(70), GUILayout.Height(22));
+        ShadowLabel(_online ? "Live" : "Offline", _online ? _pillOn : _pillOff, GUILayout.Width(70), GUILayout.Height(22));
         GUILayout.Space(6);
         if (GUILayout.Button("X", _btn, GUILayout.Width(30))) _open = false;
         GUILayout.EndHorizontal();
@@ -629,32 +801,91 @@ public class DonationPanel : MonoBehaviour
         if (_zoomImage != null) DrawZoomModal();
         else if (_showTerms) DrawTermsModal(rect);
         else if (_resultText != null) DrawResultModal();
+        else if (_pendingBuySku != null) DrawWorkingModal();
         else if (_confirmSku != null) DrawConfirmModal();
+    }
+
+    // ─── Purchase in flight ─────────────────────────────────────────────────
+
+    // Shown from the moment "Yes, buy" is pressed until the verdict lands. It
+    // exists because the wait can legitimately run to tens of seconds when the
+    // server is re-asking a spend it got no answer to, and an un-narrated pause
+    // that long reads as a broken button — which is what pushed players into
+    // clicking Buy a second time.
+    private void DrawWorkingModal()
+    {
+        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _scrim);
+
+        int w = Mathf.Min(420, Screen.width - 60);
+        int h = Mathf.Min(200, Screen.height - 60);
+        var r = new Rect((Screen.width - w) / 2f, (Screen.height - h) / 2f, w, h);
+        DrawPanel(r);
+
+        GUILayout.BeginArea(new Rect(r.x + _contentInset, r.y + _contentInset,
+                                     r.width - _contentInset * 2, r.height - _contentInset * 2));
+
+        ShadowLabel("Processing Purchase", _hdr);
+        DrawHr();
+        GUILayout.Space(8);
+
+        float waited = Time.realtimeSinceStartup - _pendingBuyStarted;
+        GUILayout.Label("Talking to the Valcoin service...", _label);
+        GUILayout.Space(4);
+        GUILayout.Label(waited > 6f
+            ? "Still waiting. The server retries a purchase it gets no answer to, so this "
+              + "can take a moment - don't buy again, you won't be charged twice."
+            : "This usually takes about a second.", _sub);
+
+        GUILayout.FlexibleSpace();
+        GUILayout.Label($"{Mathf.CeilToInt(waited)}s", _sub);
+
+        GUILayout.EndArea();
     }
 
     // ─── Purchase result modal ──────────────────────────────────────────────
 
     private void DrawResultModal()
     {
-        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _line);
+        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _scrim);
 
         int w = Mathf.Min(460, Screen.width - 60);
-        int h = Mathf.Min(260, Screen.height - 60);
+        int h = Mathf.Min(300, Screen.height - 60);
         var r = new Rect((Screen.width - w) / 2f, (Screen.height - h) / 2f, w, h);
-        GUI.Box(r, GUIContent.none, _bg);
+        DrawPanel(r);
 
-        GUILayout.BeginArea(new Rect(r.x + 18, r.y + 18, r.width - 36, r.height - 36));
+        GUILayout.BeginArea(new Rect(r.x + _contentInset, r.y + _contentInset,
+                                     r.width - _contentInset * 2, r.height - _contentInset * 2));
 
-        // Green title on success, ember-orange on failure (matches the Live/
-        // Offline pill colors used in the header).
+        // Green on success, ember-orange on failure, amber on an unknown outcome
+        // (the same Live/Offline pill colours used in the header).
+        string title;
+        Color tint;
+        switch (_resultKind)
+        {
+            case BuyOutcome.Success: title = "Purchase Complete"; tint = new Color(0.5f, 0.85f, 0.45f); break;
+            case BuyOutcome.Unknown: title = "Purchase Unconfirmed"; tint = new Color(0.95f, 0.78f, 0.35f); break;
+            default:                 title = "Purchase Failed";   tint = new Color(0.95f, 0.55f, 0.3f); break;
+        }
+
         var prev = GUI.contentColor;
-        GUI.contentColor = _resultSuccess ? new Color(0.5f, 0.85f, 0.45f) : new Color(0.95f, 0.55f, 0.3f);
-        GUILayout.Label(_resultSuccess ? "Purchase Complete" : "Purchase Failed", _hdr);
+        GUI.contentColor = tint;
+        ShadowLabel(title, _hdr);
         GUI.contentColor = prev;
 
         DrawHr();
         GUILayout.Space(8);
         GUILayout.Label(_resultText, _label);
+
+        // A failure is now a promise, not just a report: the server refuses to
+        // leave a purchase debited without delivering, and refunds when it can't.
+        if (_resultKind == BuyOutcome.Failed)
+        {
+            GUILayout.Space(6);
+            var pc = GUI.contentColor;
+            GUI.contentColor = new Color(0.5f, 0.85f, 0.45f);
+            GUILayout.Label("No Valcoins were taken.", _label);
+            GUI.contentColor = pc;
+        }
 
         GUILayout.FlexibleSpace();
         if (GUILayout.Button("OK", _btnPrimary, GUILayout.Height(38)))
@@ -674,7 +905,7 @@ public class DonationPanel : MonoBehaviour
         {
             if (kv.Value <= 0) continue;
             if (!any) { GUILayout.BeginHorizontal(); any = true; GUILayout.Label("Charges:", _label, GUILayout.Width(70)); }
-            GUILayout.Label($"{ChargeLabel(kv.Key)} x{kv.Value}", _pillOn, GUILayout.ExpandWidth(false));
+            ShadowLabel($"{ChargeLabel(kv.Key)} x{kv.Value}", _pillOn, GUILayout.ExpandWidth(false));
             GUILayout.Space(10);
         }
         if (any) { GUILayout.FlexibleSpace(); GUILayout.EndHorizontal(); }
@@ -693,7 +924,7 @@ public class DonationPanel : MonoBehaviour
         if (_questStreak > 0) line += $"  ·  {_questStreak}-day streak";
 
         GUILayout.BeginHorizontal();
-        GUILayout.Label(line, _questEarned >= _questCap ? _pillOn : _sub, GUILayout.ExpandWidth(false));
+        ShadowLabel(line, _questEarned >= _questCap ? _pillOn : _sub, GUILayout.ExpandWidth(false));
         GUILayout.FlexibleSpace();
         GUILayout.EndHorizontal();
     }
@@ -726,7 +957,7 @@ public class DonationPanel : MonoBehaviour
 
     private void DrawDonate()
     {
-        GUILayout.Label("Support the server", _hdr);
+        ShadowLabel("Support the server", _hdr);
         GUILayout.Label(
             "Donating is always optional. Playing is free, and every perk is cosmetic " +
             "or a weekly-limited supply - never raw power.", _sub);
@@ -911,7 +1142,7 @@ public class DonationPanel : MonoBehaviour
     // line for charge pools, then a compact row per item.
     private void DrawCategory(string category, List<Catalog.Sku> skus)
     {
-        GUILayout.Label(category.ToUpperInvariant(), _catHdr);
+        ShadowLabel(category.ToUpperInvariant(), _catHdr);
 
         // Blurb = the first non-empty category_desc among the group's SKUs.
         string blurb = null;
@@ -972,7 +1203,7 @@ public class DonationPanel : MonoBehaviour
         // Right-hand action column: exactly one of owned / locked / capped /
         // buy / offline. One-time perks lose the Buy button once owned.
         if (ownedPerk)
-            GUILayout.Label("Already Purchased", _owned, GUILayout.Width(160));
+            ShadowLabel("Already Purchased", _owned, GUILayout.Width(160));
         else if (gated)
             DisabledButton("Locked", 110);
         else if (capReached)
@@ -1046,7 +1277,7 @@ public class DonationPanel : MonoBehaviour
 
     private void DrawGift()
     {
-        GUILayout.Label("Gift Valcoins", _hdr);
+        ShadowLabel("Gift Valcoins", _hdr);
         GUILayout.Label("Send Valcoins to another player on the server.", _label);
         GUILayout.Space(4);
         GUILayout.BeginHorizontal();
@@ -1080,7 +1311,7 @@ public class DonationPanel : MonoBehaviour
 
     private void DrawPatrons()
     {
-        GUILayout.Label("Top Patrons", _hdr);
+        ShadowLabel("Top Patrons", _hdr);
         GUILayout.Space(4);
         if (!_online)
         {
@@ -1171,7 +1402,7 @@ public class DonationPanel : MonoBehaviour
         var tex = ImageCache.Get(_zoomImage);
         if (tex == null) { _zoomImage = null; return; }
 
-        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _line);
+        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _scrim);
 
         if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)
         { _zoomImage = null; Event.current.Use(); return; }
@@ -1183,8 +1414,8 @@ public class DonationPanel : MonoBehaviour
         float scale = Mathf.Min(maxW / tex.width, maxH / tex.height, 1f);
         float imgW = tex.width * scale, imgH = tex.height * scale;
 
-        float panelW = imgW + 36f;
-        float panelH = imgH + 100f;
+        float panelW = imgW + _contentInset * 2f;
+        float panelH = imgH + _contentInset * 2f + 64f;
         var r = new Rect((Screen.width - panelW) / 2f, (Screen.height - panelH) / 2f, panelW, panelH);
 
         // Click outside the panel closes. Handled before the panel's own controls
@@ -1192,14 +1423,14 @@ public class DonationPanel : MonoBehaviour
         if (Event.current.type == EventType.MouseDown && !r.Contains(Event.current.mousePosition))
         { _zoomImage = null; Event.current.Use(); return; }
 
-        GUI.Box(r, GUIContent.none, _bg);
+        DrawPanel(r);
 
-        GUI.DrawTexture(new Rect(r.x + 18f, r.y + 18f, imgW, imgH), tex, ScaleMode.ScaleToFit);
+        GUI.DrawTexture(new Rect(r.x + _contentInset, r.y + _contentInset, imgW, imgH), tex, ScaleMode.ScaleToFit);
 
         if (!string.IsNullOrEmpty(_zoomCaption))
-            GUI.Label(new Rect(r.x + 18f, r.y + imgH + 22f, imgW, 24f), _zoomCaption, _rateSub);
+            GUI.Label(new Rect(r.x + _contentInset, r.y + _contentInset + imgH + 4f, imgW, 24f), _zoomCaption, _rateSub);
 
-        if (GUI.Button(new Rect(r.x + panelW / 2f - 60f, r.y + imgH + 50f, 120f, 32f), "Close", _btn))
+        if (GUI.Button(new Rect(r.x + panelW / 2f - 60f, r.y + _contentInset + imgH + 32f, 120f, 32f), "Close", _btn))
             _zoomImage = null;
     }
 
@@ -1211,10 +1442,24 @@ public class DonationPanel : MonoBehaviour
         if (sku == null) return;
 
         // Dim backdrop over the whole screen.
-        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _line);
+        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _scrim);
 
         bool isCharge = sku.Effect == "add_charges";
         bool isVfx    = sku.Effect == "armor_vfx";
+
+        // A reason this purchase cannot go through, checked on the buyer's own
+        // machine BEFORE any coins move. The server can't run this one: an aura
+        // binds to whatever armour this client has equipped, which is state only
+        // this client holds — so without the check the sale went through, the
+        // apply failed here, and the player was left paid-up and empty-handed.
+        string blocker = null;
+        if (isVfx)
+        {
+            string vfxSlot = ArmorVfx.SlotFor(sku.Perk);
+            if (vfxSlot != null && ArmorVfx.EquippedIn(Player.m_localPlayer, vfxSlot) == null)
+                blocker = $"You have no {vfxSlot} armor equipped. Equip a piece first - "
+                          + "the familiar binds to it, and buying now would spend Valcoins on nothing.";
+        }
 
         // armor_vfx: does the equipped helmet already carry a familiar? Then
         // this purchase overwrites it — warn before taking the coins.
@@ -1234,13 +1479,15 @@ public class DonationPanel : MonoBehaviour
 
         int w = Mathf.Min(isVfx ? 480 : 460, Screen.width - 60);
         int baseH = isCharge ? 300 : (isVfx ? (overwriteWarn != null ? 400 : 340) : 240);
+        if (blocker != null) baseH += 70;
         int h = Mathf.Min(baseH + previewH, Screen.height - 60);
         var r = new Rect((Screen.width - w) / 2f, (Screen.height - h) / 2f, w, h);
-        GUI.Box(r, GUIContent.none, _bg);
+        DrawPanel(r);
 
-        GUILayout.BeginArea(new Rect(r.x + 18, r.y + 18, r.width - 36, r.height - 36));
+        GUILayout.BeginArea(new Rect(r.x + _contentInset, r.y + _contentInset,
+                                     r.width - _contentInset * 2, r.height - _contentInset * 2));
 
-        GUILayout.Label("Confirm Purchase", _hdr);
+        ShadowLabel("Confirm Purchase", _hdr);
         DrawHr();
         GUILayout.Space(8);
 
@@ -1291,14 +1538,30 @@ public class DonationPanel : MonoBehaviour
             }
         }
 
+        if (blocker != null)
+        {
+            GUILayout.Space(8);
+            var bc = GUI.color;
+            GUI.color = new Color(1f, 0.6f, 0.4f);
+            GUILayout.Label(blocker, _label);
+            GUI.color = bc;
+        }
+
         GUILayout.FlexibleSpace();
         GUILayout.BeginHorizontal();
-        if (GUILayout.Button("Yes, buy", _btnPrimary, GUILayout.Height(38)))
+        if (blocker != null)
+        {
+            // Cheaper to refuse here than to debit, fail to apply on this client
+            // and unwind it: the aura binds to a piece only this machine can see.
+            GUILayout.Label("Yes, buy", _btnDim, GUILayout.Height(38));
+        }
+        else if (GUILayout.Button("Yes, buy", _btnPrimary, GUILayout.Height(38)))
         {
             RpcLayer.SendAction("buy:" + sku.Id);
-            // Arm the result modal: the next server reply reports the outcome.
+            // Arm the "working on it" modal; the server's verdict replaces it.
             _pendingBuySku = sku.Id;
-            _pendingBuyDeadline = Time.realtimeSinceStartup + 12f;
+            _pendingBuyStarted = Time.realtimeSinceStartup;
+            _pendingBuyDeadline = _pendingBuyStarted + BuyReplyTimeoutSeconds;
             _resultExtra = null;
             _confirmSku = null;
         }
@@ -1325,17 +1588,18 @@ public class DonationPanel : MonoBehaviour
     private void DrawTermsModal(Rect parent)
     {
         // Dim backdrop over the whole screen.
-        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _line);
+        GUI.Box(new Rect(0, 0, Screen.width, Screen.height), GUIContent.none, _scrim);
 
         int w = Mathf.Min(560, Screen.width - 60);
         int h = Mathf.Min(460, Screen.height - 60);
         var r = new Rect((Screen.width - w) / 2f, (Screen.height - h) / 2f, w, h);
-        GUI.Box(r, GUIContent.none, _bg);
+        DrawPanel(r);
 
-        GUILayout.BeginArea(new Rect(r.x + 16, r.y + 16, r.width - 32, r.height - 32));
+        GUILayout.BeginArea(new Rect(r.x + _contentInset, r.y + _contentInset,
+                                     r.width - _contentInset * 2, r.height - _contentInset * 2));
 
         GUILayout.BeginHorizontal();
-        GUILayout.Label("Terms of Use - Donations", _hdr);
+        ShadowLabel("Terms of Use - Donations", _hdr);
         GUILayout.FlexibleSpace();
         if (GUILayout.Button("X", _btn, GUILayout.Width(30))) _showTerms = false;
         GUILayout.EndHorizontal();

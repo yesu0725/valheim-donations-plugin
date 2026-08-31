@@ -48,6 +48,15 @@ client-side to use the donation system at all.
   IMGUI panel (opens with F4); tabs: Donate / Shop / Gift / Patrons / Admin. Offline-resilient;
   Donate tab has inline code + Copy + Open-portal + cooldown + Terms modal. Renders owned/weekly/charge
   states from `/api/state`; header shows a persistent "Charges:" line for held consumables
+- [ValheimTheme.cs](../valheim-plugin/ValheimTheme.cs) — the panel's **skin, read out of the running
+  game**. Pulls the player inventory's own panel sprite, its "Take All" button in all four states, the
+  serif font, the text colours and the font sizes it renders at (multiplied by the live canvas
+  `scaleFactor`, since IMGUI is in screen pixels and the game's UI is in canvas units). Sprites live in
+  a non-readable atlas, so each is copied through a `RenderTexture` blit into a `Texture2D` IMGUI can
+  use, carrying the sprite's own 9-slice border into `GUIStyle.border`. Every extraction step is
+  wrapped separately and `DonationPanel` falls back per field, so a Valheim UI restructure costs the
+  theme and never the panel. Re-runs when the canvas scale changes; `Version` bumps and the panel
+  rebuilds its styles
 - [InventoryMenuButton.cs](../valheim-plugin/InventoryMenuButton.cs) — a **"Donations" button on the
   player inventory screen**, cloned from the inventory's own "Take All" button so it inherits vanilla
   styling. Positioned one row **below Lost Scrolls II's "Rankings" button** by reading that button's

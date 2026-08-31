@@ -61,8 +61,13 @@ public static class GiftFlow
         // refused senders coins they demonstrably held on the backend. /api/transfer
         // is atomic and rejects a real overdraft itself.
 
+        // Retried with the SAME key, for the same reason the shop is (see
+        // ShopHandler.BuyRoutine): /api/transfer debits the moment it answers
+        // 200, so a lost reply used to be reported as "Gift failed" to a sender
+        // whose coins had already moved. A retry answered "duplicate" tells us
+        // the transfer stands, and the recipient got their coins either way.
         var key = $"gift-{Guid.NewGuid():N}";
-        SharedCoroutineRunner.Instance.StartCoroutine(BackendClient.Post<TransferResp>(
+        SharedCoroutineRunner.Instance.StartCoroutine(BackendClient.PostWithRetry<TransferResp>(
             "/api/transfer",
             new {
                 from_steam64 = fromSteam64,
@@ -72,13 +77,18 @@ public static class GiftFlow
                 from_name    = fromName,
                 to_name      = toName,
             },
+            2, 2f,
             (ok, r, err) =>
             {
                 if (!ok || r == null)
                 {
-                    reply(err != null && err.Contains("402")
-                        ? $"Not enough Valcoins to send {amount}."
-                        : $"Gift failed. ({err ?? "unknown"})");
+                    if (err != null && err.Contains("402"))
+                        reply($"Not enough Valcoins to send {amount}.");
+                    else if (BackendClient.IsDefiniteRefusal(err))
+                        reply($"Gift refused - no Valcoins were taken. ({err ?? "unknown"})");
+                    else
+                        reply($"Couldn't confirm the gift of {amount} to {toName}. Check your "
+                              + "balance before sending again - it may have gone through.");
                     return;
                 }
                 CoinManager.SetBalance(fromSteam64, r.balance);

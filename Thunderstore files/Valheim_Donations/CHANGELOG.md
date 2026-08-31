@@ -1,5 +1,33 @@
 # Changelog
 
+## 5.22.2
+
+Readability pass over the panel. 5.22.0 and 5.22.1 were never published.
+
+- **The text is readable again.** With the panel wearing the game's real wood, half the writing on it had almost no contrast left — the daily-quest line, the exchange-rate caption and the headings were all sitting on a background of roughly their own brightness. Body and secondary text are now near-white, headings and the "Live" marker are drawn with a dark shadow behind them the way the game outlines its own text, and the exchange-rate callout sits in a dark recess so its gold stands out instead of blending in.
+- **Headings are no longer slanted.** The panel was picking the *bold italic* cut of Valheim's serif for every heading, the primary button and the rate callout, because the name it was matching on is also the start of the italic one's name. They are upright now, as intended.
+
+## 5.22.1
+
+Two corrections to 5.22.0.
+
+- **A purchase on a server that has not updated yet no longer says "Purchase Unconfirmed".** 5.22.0 taught the panel to wait for the server to state the outcome of a purchase — and then waited for it from servers that had no idea it was wanted. The result was the exact thing 5.22.0 set out to fix, wearing a different word: a purchase that plainly succeeded, coins deducted, reported as unconfirmed. The panel now reads the server's ordinary reply as the answer, exactly as it always did, and takes the newer, more precise verdict only when it is actually offered.
+- **The panel is no longer washed in orange.** Three separate things were making it too bright and too red: the dim backdrop behind pop-up windows was being drawn in the frame's warm tan instead of a neutral shade, so every window tinted the whole screen; buttons were being brightened by half again to make them stand out; and the panel's own gold was picked up from whichever label the game happened to expose first. Colours now come from Valheim's actual palette — brown wood, tan frame, gold headings, cream text — and the primary buttons are the game's ordinary wood with gold lettering, the way the game does it, rather than gold slabs.
+
+**For server operators:** new `panel_use_game_skin` key in `valcoin_config.json` (default on). Off, the panel draws itself in the same palette instead of borrowing the inventory screen's sprites — an escape hatch if a future Valheim update makes those sprites come out wrong.
+
+## 5.22.0
+
+- **A purchase can no longer fail and take your Valcoins anyway.** This is the big one. If the server did not hear back about a purchase in time — a slow moment on the donation service, a dropped connection — the panel announced *"Purchase failed"* while the coins had, in fact, already been spent. The purchase is now re-checked with the service instead of being written off, and because every purchase carries a one-time ticket you cannot be charged twice for asking again. If the item still cannot be handed over — a bad item id, an effect the server does not recognise — your Valcoins are **refunded automatically**, and the panel says so.
+- **"Purchase failed" now means your coins are safe.** The panel used to guess the outcome from the wording of the server's reply, so anything it did not recognise was shown as a failure — including *"you were charged but nothing could be spawned"*, which is the worst possible thing to label that way. The server now states the outcome outright, and a failure carries a plain **"No Valcoins were taken."** When the outcome genuinely is not known, it says *that* instead of pretending, and tells you what to check.
+- **Buying an armor familiar with nothing equipped is refused before you pay,** rather than charged and then failing on your own machine. If it somehow slips through anyway, it refunds itself.
+- **Purchases now show a "Processing" window** while the server works, so a slow purchase looks busy instead of broken — and you are not tempted to click Buy a second time.
+- **Gifting got the same treatment.** A gift that went through but lost its reply used to be reported as failed to the sender.
+
+- **The panel now wears the game's own interface.** It is drawn with the wood panel, the buttons and the text of your player inventory screen — the real ones, read from the game as it runs — instead of an approximation of them. Text sizes and colours are taken from that same screen, so the panel matches your resolution and GUI-scale setting the way the rest of the game does, and re-matches on the spot if you change either.
+
+*Update the plugin on both the server and your client.*
+
 ## 5.21.2
 
 - **One-time quests no longer claim to reset.** Finishing a one-time quest you had already completed answered *"already claimed today — resets in 7h 16m"*, which described a cooldown that does not exist: a one-time quest never comes back. The reset time was the daily-quest timer, printed by mistake for every quest alike. It now says plainly that the quest is one-time and already claimed.

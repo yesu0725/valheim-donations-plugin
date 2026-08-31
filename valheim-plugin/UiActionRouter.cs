@@ -7,6 +7,9 @@ using System.Linq;
 //   "donate"
 //   "quest:<questId>"                     — a ServerGuide quest just completed
 //   "buy:<sku>"
+//   "buyfail:<sku>"                       — the buyer's client couldn't apply an
+//                                           armor aura it just paid for; refunds
+//                                           against a one-shot server-side ticket
 //   "gift:<playerName>:<amount>"
 //   "title:<text>"
 //   "title:clear"
@@ -45,6 +48,7 @@ public static class UiActionRouter
             case "donate":       DonateFlow.Run(steam64, senderName, Reply); break;
             case "quest":        QuestFlow.Run(senderPeerID, steam64, senderName, rest.Trim(), Reply); break;
             case "buy":          DoBuy(steam64, rest, Reply); break;
+            case "buyfail":      ShopHandler.ReportApplyFailed(steam64, rest.Trim().ToLowerInvariant(), m => Reply(m)); break;
             case "gift":         DoGift(steam64, senderName, rest, Reply); break;
             case "topdonors":    TopDonorsFetcher.Fetch(reply => Reply(reply)); break;
             case "whoami":       Reply("__ADMIN__:" + IsAdmin(steam64).ToString().ToLowerInvariant()); break;
