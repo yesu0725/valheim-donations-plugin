@@ -79,7 +79,9 @@ public class SoulkeeperPoller : MonoBehaviour
     {
         while (true)
         {
-            if (Config.Ready && !(ZNet.instance != null && ZNet.instance.IsServer()))
+            // IsDedicated, not IsServer -- a host has a local player whose
+            // charges need keeping fresh, or their death insurance never arms.
+            if (Config.Ready && !(ZNet.instance != null && ZNet.instance.IsDedicated()))
             {
                 var steam64 = LocalIdentity.Steam64();
                 if (!string.IsNullOrEmpty(steam64))

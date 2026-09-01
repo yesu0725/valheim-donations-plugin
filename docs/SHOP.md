@@ -297,6 +297,56 @@ gets an `__ARMORVFX__:<aura>:head` control message and applies it locally
   still succeed** and it logs under `[Valcoin][ArmorVfx]` — the visual degrades,
   never crashes. Needs in-game verification (prefab resolution + loop behavior).
 
+#### Moving a familiar — `valcoin_familiars.yaml` (5.23.0)
+
+Where a familiar hovers is a matter of taste, so it is a file rather than a
+constant. Each client writes `BepInEx/config/valcoin_familiars.yaml` on first
+run, seeded from the registry with exactly the built-in positions
+(`ArmorVfx.CompanionOffset + Aura.Raise`), one block per familiar:
+
+```yaml
+familiars:
+  # Gjall
+  gjall:
+    x: -0.75    # negative = your left, positive = your right
+    y: 1.9      # height; 1.55 is about head height
+    z: 0        # positive = in front of you, negative = behind
+```
+
+Save and the familiar moves **within a second, in-game**, without re-equipping
+the helmet: [FamiliarLayout](../valheim-plugin/FamiliarLayout.cs) re-reads the
+file when its timestamp moves and bumps a version counter, and
+`ArmorVfxManager` repositions the familiars it already has attached. Polling a
+timestamp rather than using a `FileSystemWatcher` is deliberate — watchers fire
+mid-write and need debouncing, and everything else here polls for the same
+reason (`GrantPoller`, `CatalogSync`, `QuestWatcher`).
+
+**It is a local cosmetic preference, not a server setting.** Familiars are drawn
+by each client from the wearer's ZDO, so this file changes what *you* see —
+including where other players' familiars sit on your screen. Nothing is synced,
+nothing is authoritative, and a dedicated server never even writes the file
+(`FamiliarLayout.Load` is called from `ArmorVfxManager.Awake`, and that
+component is not spawned on a dedicated server).
+
+Editing notes:
+
+- **Any familiar you leave out keeps its built-in position**, so it is safe to
+  delete every block but the one you are tuning.
+- **A partial block keeps the shipped values for the axes it omits** — set only
+  `y` and `x`/`z` stay where they were, rather than snapping to 0.
+- Entries are told apart by *content*, not indentation (`name:` with nothing
+  after the colon vs. `x: <number>`), so 2-space, 4-space and tab indents all
+  parse. Names and axes are case-insensitive; `-.5`, `+2` and `1.` are accepted.
+- An unknown familiar name is ignored with a `[Valcoin][Familiars]` warning
+  rather than failing the file, and a file caught mid-save keeps the last good
+  layout and retries on the next change.
+- **Scale is deliberately not configurable.** It is baked into each familiar at
+  build time — the particle-emission taming, the glow graft and the strip passes
+  are all multiplied by `def.Scale` when the visual is constructed — so changing
+  it would need a rebuild, not a nudge. Position is a pure transform write,
+  which is why it can be live.
+
+
 ### `grant_item` effect (weekly-limited consumables) 🔜
 
 Sells **hard-to-cook food, meads, and grind-heavy earnable materials** — capped
@@ -337,6 +387,66 @@ already generated the old 3-SKU `valcoin_shop.yaml` will NOT auto-overwrite it**
 (`EnsureFile` skips when the file exists) — replace that YAML on the host and
 restart to promote the catalog on an existing server. Adding or editing a SKU is
 just a YAML edit + restart.
+
+## Buying from a locally hosted world
+
+Since 5.22.4 the host of a local world can use the shop (before that, every
+action a host sent was dropped — see [CHANGELOG.md](CHANGELOG.md)). Worth being
+explicit about what that does and does not mean, because the obvious reading —
+*"players can now buy from their own seed"* — is **not** what happens.
+
+### Ordinary players cannot, and that is the design
+
+Players are never given `plugin_token`; the package README tells the **server
+operator** to fill it in. Without it `Config.Ready` is false, so on a solo world
+the panel reads **Offline** and `ShopHandler.Buy` refuses at *"Shop is offline
+(backend not configured)"* before any coins move. A player's shop actions
+normally travel by RPC to the dedicated server, which holds the token.
+
+So this only works for whoever holds the token — in practice the operator,
+whose own client profile carries it so the panel reads Live.
+
+### What crosses back into shared state
+
+The ledger is global (keyed by Steam64); **effects** are applied by whichever
+machine is the server, which on a local world is the buyer.
+
+| Stays in the local world | Follows the player to the dedicated server |
+|---|---|
+| Items — spawned at the buyer's feet, in that world | **Coins** — debited from the real ledger |
+| Perks — `PerkManager` is a local `valcoin_data/perks.json` | **`add_charges`** — the charge pool is backend-tracked, so Soulkeeper charges bought solo are usable on the real server |
+| Armour auras — local ZDO state | **Weekly caps and `owned_skus`** — counted from the backend's `spends` rows |
+
+The everyday consequence is **confusion, not exploitation**: buy a `grant_item`
+SKU on a solo world and the coins are spent, the weekly cap is consumed, and the
+goods are sitting in a world the player wasn't playing. Nothing refunds it,
+because as far as the plugin is concerned delivery *succeeded*.
+
+### Why it is not a new hole, and what it would take to make it a feature
+
+`/api/spend` takes `coins`, `weekly_cap`, `grant_charges`, `charge_kind` and
+`weekly_charge_cap` **from the caller** — there is no server-side price list.
+That is the documented split ("the backend owns the coin ledger; the plugin owns
+the perk/SKU effects") and it is sound while the only caller is a trusted
+dedicated server. On a local world the *host's own* `valcoin_shop.yaml` and
+`valcoin_admins.yaml` are the authority, and both are editable by whoever owns
+the machine: set a price to 1 and a charge cap to 9999 and you can mint
+Soulkeeper charges that work on the real server.
+
+This is **not an escalation**, because all of it needs the token, and the token
+already grants strictly more directly — one secret covers `/api/state`,
+`/api/spend` and `/api/admin/grant` alike (see [`auth.py`](../backend/app/auth.py)).
+Local-world buying just reaches the same trust boundary through a friendlier
+door.
+
+**Therefore: keep the token with the operator and the dedicated server, and this
+is safe to leave enabled** — it also makes the shop testable end-to-end without
+a server, which is how the 5.22.4 bug was found. Turning it into a real player
+feature is a different job: the backend would have to validate prices against
+its own catalog, and players would need a credential that is not the admin
+token. That is the work [MULTI-TENANT.md](MULTI-TENANT.md) sketches and nobody
+has built.
+
 
 ## Earning Valcoins by playing (ServerGuide quests)
 

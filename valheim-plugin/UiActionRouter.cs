@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using UnityEngine;
 
 // Server-side handler for actions arriving from the in-game GUI panel.
 //
@@ -28,11 +29,7 @@ public static class UiActionRouter
     {
         if (string.IsNullOrEmpty(action)) return;
 
-        var peer = ZNet.instance?.GetPeer(senderPeerID);
-        if (peer == null) return;
-
-        string steam64 = SteamIdResolver.FromPeer(peer);
-        string senderName = peer.m_playerName;
+        if (!ResolveSender(senderPeerID, out string steam64, out string senderName)) return;
 
         // Reply helper — sends a line back to the requesting panel only.
         void Reply(string msg) => RpcLayer.PushPanelMessage(senderPeerID, msg);
@@ -56,6 +53,53 @@ public static class UiActionRouter
             case "admin_remove": DoAdminAdjust(steam64, rest, Reply, give: false); break;
             default:             Reply($"⚠️ Unknown UI action: {key}"); break;
         }
+    }
+
+    // Who sent this action?
+    //
+    // The peer list is the list of REMOTE connections, so on a listen server the
+    // host is not in it. This used to be `GetPeer(id); if (peer == null) return;`
+    // and that early return is why a host could not buy, donate, gift, report a
+    // quest or even be recognised as an admin from their own world -- every
+    // action was dropped here, before any handler, with nothing logged and no
+    // reply. It failed safely (nothing reached the backend, so no coins moved)
+    // but completely silently, which is the part worth fixing.
+    //
+    // ZRoutedRpc stamps a locally-handled call with its own m_id, which ZNet sets
+    // from ZDOMan.GetSessionID() -- the same value ZNet.GetUID() returns. So an
+    // action whose sender id IS our uid came from the local player, and the
+    // answer is the local Player rather than a peer.
+    //
+    // A dedicated server can never take that branch: it has no local player and
+    // never sends an action, and IsDedicated() gates it regardless.
+    private static bool ResolveSender(long senderPeerID, out string steam64, out string senderName)
+    {
+        steam64 = null; senderName = null;
+
+        var peer = ZNet.instance?.GetPeer(senderPeerID);
+        if (peer != null)
+        {
+            steam64 = SteamIdResolver.FromPeer(peer);
+            senderName = peer.m_playerName;
+            return true;
+        }
+
+        if (SteamIdResolver.IsListenServer() && senderPeerID == ZNet.GetUID())
+        {
+            steam64 = LocalIdentity.Steam64();
+            senderName = Player.m_localPlayer != null ? Player.m_localPlayer.GetPlayerName() : "";
+            if (!string.IsNullOrEmpty(steam64)) return true;
+
+            // Host, but Steamworks would not give us an id. Nothing downstream
+            // can key a ledger row on that, so stop -- but say so, because a
+            // silent drop here is what made this invisible for so long.
+            Debug.LogWarning("[Valcoin] action from the local host, but the local Steam64 "
+                             + "could not be resolved; ignoring.");
+            return false;
+        }
+
+        Debug.LogWarning($"[Valcoin] action from unknown peer {senderPeerID}; ignoring.");
+        return false;
     }
 
     // "buy:<sku>" or "buy:<sku>:<arg>" (arg = armor slot for armor_vfx SKUs).
@@ -166,14 +210,30 @@ public static class UiActionRouter
 
         var peer = ZNet.instance.GetConnectedPeers().FirstOrDefault(p =>
             p.m_playerName != null && p.m_playerName.Equals(name, StringComparison.OrdinalIgnoreCase));
-        if (peer == null) return false;
+        if (peer != null)
+        {
+            steam64 = SteamIdResolver.FromPeer(peer);
+            if (string.IsNullOrEmpty(steam64)) return false;
 
-        steam64 = SteamIdResolver.FromPeer(peer);
-        if (string.IsNullOrEmpty(steam64)) return false;
+            player = Player.GetAllPlayers().FirstOrDefault(pp =>
+                pp.GetPlayerName().Equals(name, StringComparison.OrdinalIgnoreCase));
+            return true;
+        }
 
-        player = Player.GetAllPlayers().FirstOrDefault(pp =>
-            pp.GetPlayerName().Equals(name, StringComparison.OrdinalIgnoreCase));
-        return true;
+        // Same blind spot as ResolveSender, on the other side of the action: the
+        // host is not one of their own peers, so a gift or an admin adjustment
+        // aimed at the host's own name found nobody.
+        if (SteamIdResolver.IsListenServer()
+            && Player.m_localPlayer != null
+            && Player.m_localPlayer.GetPlayerName().Equals(name, StringComparison.OrdinalIgnoreCase))
+        {
+            steam64 = LocalIdentity.Steam64();
+            if (string.IsNullOrEmpty(steam64)) return false;
+            player = Player.m_localPlayer;
+            return true;
+        }
+
+        return false;
     }
 
     // ─── Action implementations — re-using existing handlers where possible ─

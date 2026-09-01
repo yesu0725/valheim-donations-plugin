@@ -5,39 +5,87 @@ files before trusting it if it's been a while. For *what changed* rather than
 *what's true now*, see [CHANGELOG.md](CHANGELOG.md), which also carries the
 plugin↔backend compatibility matrix.
 
-## Where things stand — 2026-08-31
+## Where things stand — 2026-09-01
 
 **Deployed / published right now.** These drift apart constantly; check them
 before believing any bug report (see the DLL-timestamp trap below).
 
 | Target | Plugin | Notes |
 |---|---|---|
-| **Thunderstore (public)** | **5.22.2** | Published 2026-08-31 13:33 UTC. **This is what every player's client runs.** Verified against the Thunderstore API, not just assumed: `GET /api/experimental/package/TaegukGaming/Valheim_Donations/` reports `5.22.2` as latest, `is_deprecated: false`. Supersedes 5.20.0, which had been the public version since 2026-08-23. |
-| **Dedicated server** | **5.22.2** | Promoted 2026-08-31, **restarted and tested by the owner** — so the DLL is actually loaded, not merely on disk. DLL hash checked against `bin/Release`; its `manifest.json` bumped 5.21.1 → 5.22.2 in place, keeping its own dependency list (no `denikson-BepInExPack_Valheim` — that is the client pack). |
-| **Every Gale profile** | **5.22.2** | `HB Test`, `Hearthbound Valheim`, `Hearthbound - Admin`, `HB Modpack Ref` — all four, because Gale hard-links them to one file. See below. |
-| `bin/Release` | **5.22.2** | Clean build (0 errors). |
+| **Thunderstore (public)** | **5.22.2** | Published 2026-08-31 13:33 UTC. **This is what every player's client runs**, and it carries the relog bug 5.22.3 fixes -- a client-side fault, so this is the only number that matters until 5.22.3 is published. |
+| **Dedicated server** | **5.23.0** | Promoted 2026-09-01 while stopped, twice (5.22.4 then 5.23.0). DLL SHA-256 matches `bin/Release`; `manifest.json` bumped in place each time, keeping its own dependency list (no `denikson-BepInExPack_Valheim` -- that is the client pack). **Not started since**, so nothing has loaded it yet. 5.23.0 is cosmetic and client-only, so the server gains nothing from it beyond version parity. |
+| **Every Gale profile (test client)** | **5.23.0** | Deployed 2026-09-01. All four verified by SHA-256, not by assumption: `HB Test`, `Hearthbound Valheim`, `HB Modpack Ref` took it through the hard link; **`Hearthbound - Admin` has its own file** and was written separately by the script's verification pass, on both deploys -- see the corrected hard-link note below. |
+| `bin/Release` | **5.23.0** | Clean build (0 errors), 2026-09-01. SHA-256 `FCC1701626D7...`. |
+| Thunderstore **zip** | **5.23.0** | `Valheim_Donations-v5.23.0_20260901-1424.zip`, built 2026-09-01. Five files flat at the root; DLL hash-checked against `bin/Release` before zipping (the staged copy is always a release behind until step 4 is done -- it was stale for 5.22.3 too). **Ready to upload; upload is the owner's step.** The older `v5.22.3` zip is superseded -- 5.23.0 contains it whole -- and kept only as history. |
 
-**The 5.22.2 rollout is COMPLETE — published, deployed, restarted and tested.**
-For the first time in this project's history every target is on the same
-version: Thunderstore, the dedicated server, every Gale profile and
-`bin/Release` all read 5.22.2. The table above normally exists because those
-four drift; right now they do not, so any bug report from here on is about
-5.22.2 on both halves and nothing else.
+**Two versions in flight, on purpose.** **5.22.3** is tested, packaged and
+waiting on nothing but the Thunderstore upload -- it fixes the relog bug (RPC
+handlers registered once per process instead of once per session, so from the
+second login onward a client was debited and never delivered).
+**5.22.4** adds the listen-server host fix, is deployed locally, and is
+**untested in a hosted world**.
+
+**5.23.0 is TESTED, COMMITTED AND PACKAGED. The one step left is the
+Thunderstore upload**, which is the owner's to make: there is no `tcli` on this
+machine and no Thunderstore token in the environment, and publishing is a public
+release under their account either way.
+
+Every local target is on 5.23.0 -- all four Gale profiles and the dedicated
+server -- and the owner has confirmed in-game that the familiar layout file and
+the local-world purchase fix both work.
+
+**5.22.4 is a burned number:** it was deployed everywhere and superseded by
+5.23.0 the same day, without ever being published. Its host-of-a-local-world fix
+is contained whole in 5.23.0. Same rule that burned 5.18.0, 5.22.0 and 5.22.1.
+
+Recommended publish order is still: **upload the 5.22.3 zip.** It is the one
+players need, it is verified in-game, and holding it behind an untested
+low-priority change helps nobody. 5.22.4 can follow once a hosted world has
+actually been tried. The 5.22.3 zip on disk is unaffected by the version bump in
+the staging folder.
+
+For a client talking to a dedicated server the two are behaviourally identical:
+5.22.4 contains 5.22.3 whole, and every branch it changes is host-only. That is
+also why promoting the server was safe.
+
+**Verified in-game by the owner, 2026-09-01**, over the sequence that used to
+break it -- purchase on the dedicated server, out to a locally hosted seed
+world, back to the dedicated server, purchase again. Both server purchases
+succeeded. Three sessions in one process with a role change in the middle, which
+exercises more than the original bug report did: the middle session made the
+client a listen server, so the plugin had to re-read its role rather than latch
+the first session's.
+
+That upload is the step that actually fixes players, because the fault is
+entirely client-side. Deploying to Gale fixed only these machines; the server
+promotion was for parity and fixes nothing on its own -- a dedicated server's
+`ZNet` lives for the whole process, so its registration never went stale.
+
+**The first 5.22.3 test failed because nothing had been deployed.** The fix was
+built and reported as done while `bin/Release` was the only place it existed;
+every Gale profile and the dedicated server were still running the 5.22.2 DLL
+from 2026-08-31. Hashing all six copies took a minute and settled it before any
+code was re-examined. Do that first, always -- it is now the first line of the
+DLL-timestamp trap note below.
 
 5.22.0 and 5.22.1 are **burned numbers** — each ran on HB Test, each had faults
 found there, neither was published; same rule that burned 5.18.0. Their zips are
 still on disk next to the published one; ignore them.
 
-**Gale hard-links mod files across profiles, so `deploy.ps1` has never been
-"test profile only" since the move to Gale.** All four profiles share one NTFS
-inode for `ValheimDonationSystem.dll` (identical `fsutil file queryfileid`
-output), and `Copy-Item` overwrites contents, so a write to `HB Test` goes
-through the link to the played profile too. Measured 2026-08-31, documented in
-[OPERATIONS.md](OPERATIONS.md) and in `deploy.ps1`'s own header, and left as-is
-on purpose — the played profile is never stranded on a stale DLL, which is the
-failure that cost two debugging sessions under r2modman. The dedicated server's
-copy is standalone and unaffected. **The old note that `deploy.ps1` "does not
-touch the played profile" was wrong; do not act on it.**
+**Gale hard-links mod files across profiles -- but NOT all of them.** The
+2026-08-31 note here said all four profiles share one NTFS inode and drew the
+conclusion that `deploy.ps1` has never been "test profile only". The first half
+was wrong. Measured again 2026-09-01: `HB Test`, `Hearthbound Valheim` and
+`HB Modpack Ref` share inode `...1547b6`; **`Hearthbound - Admin` has its own
+file** and does not follow a deploy. Gale re-links on its own schedule, so this
+is an observation with a date on it, never a rule.
+
+The conclusion still holds -- a deploy does reach the played profile, so it was
+never test-only -- but the mechanism is no longer trusted to do it.
+`deploy.ps1` now hashes every Gale profile after copying and writes into any
+that did not match, printing `ok`/`UPDATED` per profile; that is what caught the
+Admin profile. The dedicated server's copy is standalone and unaffected, and
+promoting to it stays manual. Details in [OPERATIONS.md](OPERATIONS.md).
 
 **Still unexercised: the purchase retry/refund path.** Everything else in
 5.22.2 has now been used in anger, but the retry and the compensating refund
@@ -66,9 +114,48 @@ as an `admin` grant noted `refund: <sku> could not be delivered`.
    any more, so the blast radius is the "+N Valcoins!" toast figure and
    `ValcoinWallet.BalanceOf` (advisory, used by sibling mods for display). A
    periodic reconcile over connected players would close it.
-3. **Nothing is unpushed.** `main` is in sync with `origin/main` as of
-   2026-08-31 (`5b7e0ec`); the backlog of 5.21.x commits went up with the
-   5.22.2 release.
+3. **Nothing is published.** Until the 5.23.0 zip is uploaded, every player is
+   still on **5.22.2** and stops being able to buy anything after their first
+   relog of a session. That is the one genuinely urgent item here, and it has
+   been true since 2026-09-01. Upload at
+   <https://thunderstore.io/c/valheim/create/docs/>.
+
+**FIXED in 5.22.4: the host of a locally hosted world can use the mod.** Found
+2026-09-01 while testing the relog fix -- a purchase on the dedicated server
+worked, the same purchase on a local seed world did nothing, silently. It was
+recorded here as a known limitation, then fixed the same day.
+
+One confusion in four places: code meaning *"I am a headless server with no
+player here"* asked `IsServer()`, which is also true for a host.
+`UiActionRouter` looked the sender up in ZNet's peer list (remote connections
+only -- a host is not in it) and returned; `RpcLayer.HandlePanelOnClient` threw
+away replies that had been delivered correctly; `SteamIdResolver.ZdoFor` /
+`OnlinePlayerFor` could not find the buyer to deliver to; and `ArmorVfxManager`
+/ `SoulkeeperPoller` skipped their work entirely. All now key on
+`senderPeerID == ZNet.GetUID()` or `IsDedicated()` as appropriate. Full account
+in [CHANGELOG.md](CHANGELOG.md).
+
+**Dedicated-server behaviour is unchanged** -- every altered branch is the one a
+dedicated server was already taking. **Not yet tested in a hosted world**; the
+mechanism was verified by decompiling the game's `ZRoutedRpc`/`ZNet` and against
+the owner's BepInEx log from the listen-server session, but the fix itself has
+not been exercised. Nobody plays as a host here, so it was not made a blocker.
+
+**Trap: `valheim-plugin/libs/assembly_valheim.dll` is the DEDICATED SERVER's
+assembly, not the client's.** Byte-identical to the server install's copy
+(SHA-256 `84A1B34F...`, 2,119,680 bytes); the client's is a different file
+(`3B26C851...`, 2,126,848 bytes). Decompile the one in `libs/` and
+`ZNet.IsDedicated()` reads `return true;`, because in that build it is a
+compile-time constant. It is a **reference** assembly -- calls bind by name at
+runtime, so a client runs the client's real implementation. The 5.22.3
+registration logic depends on `IsDedicated()` being false on a client and
+demonstrably works (the owner's log shows both the server and the client RPC
+registration on their listen server, which requires exactly that). **Do not
+"correct" working `IsDedicated()` logic from that decompilation** -- and if you
+need to read client behaviour, decompile
+`Steam\steamapps\common\Valheim\valheim_Data\Managed\assembly_valheim.dll`
+instead.
+
 
 **Closed this round, recorded so it isn't re-investigated.**
 
@@ -132,7 +219,7 @@ Full reasoning for all of the above is in the 5.21.1 and 5.21.2 entries of
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.22.2` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.23.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
   **Verified in-game and deployed 2026-08-31.**
   **5.22.2** makes the panel's text legible on the wood it now wears: 5.22.1 used
   the reference screenshot's colours literally, and mid-tone text on a mid-tone

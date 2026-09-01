@@ -755,7 +755,19 @@ public class ArmorVfxManager : MonoBehaviour
     {
         if (Time.time < _next) return;
         _next = Time.time + Interval;
-        if (ZNet.instance == null || ZNet.instance.IsServer()) return;
+        // IsDedicated, not IsServer: a listen-server host has a screen and a
+        // local player, so it has to do this client-side work like anyone else.
+        // Under IsServer a host rendered no auras at all -- not their own, not
+        // other players' -- and never mirrored their equipped auras onto their
+        // ZDO, so an armor_vfx purchase completed and then visibly did nothing.
+        if (ZNet.instance == null || ZNet.instance.IsDedicated()) return;
+
+        // Familiar positions are editable while the game runs. Re-read on a
+        // timestamp change and move the ones already attached -- without this
+        // an edit would only take effect on the next re-equip, which is not
+        // what "instantly" means to someone nudging a number to find the spot.
+        FamiliarLayout.ReloadIfChanged();
+        ApplyLayoutIfChanged();
 
         try { ArmorVfx.MirrorLocalToZdo(); } catch { }
         try { UpdateFamiliarBuffs(); } catch { }
@@ -781,6 +793,36 @@ public class ArmorVfxManager : MonoBehaviour
                 _live.Remove(key);
             }
         }
+    }
+
+    // Layout version the live familiars are currently positioned for.
+    private int _layoutVersion = -1;
+
+    // Loaded here rather than in Plugin.Awake: this component is only spawned
+    // off a dedicated server (see Plugin.SpawnUiWhenZnetReady), so putting the
+    // load here is what keeps valcoin_familiars.yaml from appearing in a
+    // dedicated server's config folder, where nothing would ever read it.
+    private void Awake() => FamiliarLayout.Load();
+
+    private void ApplyLayoutIfChanged()
+    {
+        if (_layoutVersion == FamiliarLayout.Version) return;
+        _layoutVersion = FamiliarLayout.Version;
+
+        int moved = 0;
+        foreach (var kv in _live)
+        {
+            var a = kv.Value;
+            if (a?.Go == null) continue;
+            // localPosition only. Scale is deliberately not configurable: it is
+            // baked into each familiar at build time (particle emission, glow
+            // graft and the strip passes are all multiplied by def.Scale), so
+            // changing it live would need a rebuild rather than a nudge.
+            a.Go.transform.localPosition = FamiliarLayout.OffsetFor(a.Aura);
+            moved++;
+        }
+        if (moved > 0)
+            Debug.Log($"[Valcoin][Familiars] repositioned {moved} familiar(s) from the layout file.");
     }
 
     private void RenderPlayer(Player p)
@@ -844,7 +886,10 @@ public class ArmorVfxManager : MonoBehaviour
             if (go == null) return null;
 
             go.name = "vc_aura_" + def.Id;
-            go.transform.localPosition = ArmorVfx.CompanionOffset + new Vector3(0f, def.Raise, 0f);
+            // Position comes from valcoin_familiars.yaml, which is seeded with
+            // exactly CompanionOffset + def.Raise -- so an untouched install
+            // looks identical to before the file existed.
+            go.transform.localPosition = FamiliarLayout.OffsetFor(def.Id);
             go.transform.localRotation = Quaternion.identity;
             go.transform.localScale = go.transform.localScale * def.Scale;
 

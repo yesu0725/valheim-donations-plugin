@@ -82,25 +82,69 @@ public static class SteamIdResolver
             .FirstOrDefault(p => FromPeer(p) == steam64);
     }
 
+    // ─── the host is not one of its own peers ──────────────────────────────
+    //
+    // Everything above resolves a player by walking ZNet's PEER list, which is
+    // the list of *remote* connections. On a listen server (someone hosting from
+    // their own game, rather than a dedicated server) the host is not in it —
+    // ZNet.IsConnected special-cases `uid == GetUID()` before it scans m_peers,
+    // for exactly that reason. So every lookup here returns null for the host,
+    // and server-side code that asks "who is this / where are they" gets nothing
+    // back for the one player sitting at the keyboard.
+    //
+    // These two helpers are the seam. A dedicated server never satisfies
+    // IsListenServer(), so nothing below can change its behaviour.
+
+    /// True when this process is a server that also has a local player — i.e. a
+    /// host, not a dedicated server and not a plain client.
+    public static bool IsListenServer() =>
+        ZNet.instance != null && ZNet.instance.IsServer() && !ZNet.instance.IsDedicated();
+
+    /// This id belongs to the local host themselves (so peer-list lookups will
+    /// never find it, and the local Player is the answer).
+    public static bool IsLocalHost(string id)
+    {
+        if (string.IsNullOrEmpty(id) || !IsListenServer()) return false;
+        var mine = LocalIdentity.Steam64();
+        return !string.IsNullOrEmpty(mine) && mine == id;
+    }
+
     /// Resolve the player character ZDO for this Steam64. Lets server-side code
     /// read/write position even when the Player MonoBehaviour lives on the client.
     public static ZDO ZdoFor(string steam64)
     {
         var peer = PeerFor(steam64);
-        if (peer == null || ZDOMan.instance == null) return null;
-        return ZDOMan.instance.GetZDO(peer.m_characterID);
+        if (peer != null)
+            return ZDOMan.instance != null ? ZDOMan.instance.GetZDO(peer.m_characterID) : null;
+
+        // The host: no peer entry, but the character is right here. Without this
+        // a host's grant_item purchase is refused by Buy's pre-check ("couldn't
+        // find your character to deliver items") — which at least refuses before
+        // debiting, but refuses every time.
+        if (IsLocalHost(steam64))
+            return Player.m_localPlayer != null
+                ? Player.m_localPlayer.GetComponent<ZNetView>()?.GetZDO()
+                : null;
+
+        return null;
     }
 
     /// Find the online Player whose connection matches this Steam64.
     public static Player OnlinePlayerFor(string steam64)
     {
         if (string.IsNullOrEmpty(steam64) || ZNet.instance == null) return null;
+
         var match = ZNet.instance.GetConnectedPeers()
             .FirstOrDefault(p => FromPeer(p) == steam64);
-        if (match == null) return null;
+        if (match != null)
+        {
+            var name = match.m_playerName;
+            return Player.GetAllPlayers()
+                .FirstOrDefault(p => p != null && p.GetPlayerName().Equals(name, StringComparison.OrdinalIgnoreCase));
+        }
 
-        var name = match.m_playerName;
-        return Player.GetAllPlayers()
-            .FirstOrDefault(p => p != null && p.GetPlayerName().Equals(name, StringComparison.OrdinalIgnoreCase));
+        // The host is their own local player. This is what puts the
+        // "+N Valcoins!" toast in front of a host on grant delivery.
+        return IsLocalHost(steam64) ? Player.m_localPlayer : null;
     }
 }

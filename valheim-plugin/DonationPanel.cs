@@ -165,6 +165,7 @@ public class DonationPanel : MonoBehaviour
 
         Instance = this;
         RpcLayer.OnPanelMessage += OnServerMessage;
+        RpcLayer.OnSessionStart += OnSessionStart;
         DontDestroyOnLoad(gameObject);
     }
 
@@ -172,7 +173,21 @@ public class DonationPanel : MonoBehaviour
     {
         if (Instance == this) Instance = null;
         RpcLayer.OnPanelMessage -= OnServerMessage;
+        RpcLayer.OnSessionStart -= OnSessionStart;
         DonationUiState.PanelOpen = false;
+    }
+
+    // The panel outlives a logout (DontDestroyOnLoad), so anything it learned by
+    // ASKING the server is stale the moment a new session starts -- and worse,
+    // it was only ever asked once per process. Admin rights are the one that
+    // matters: they're per-server, so a player who is an admin on one server
+    // kept the Admin tab after joining another. Clearing the flag and the
+    // "already asked" latch makes the next open re-ask whoami on the server
+    // they're actually on.
+    private void OnSessionStart()
+    {
+        _isAdmin = false;
+        _askedWhoAmI = false;
     }
 
     // Ask for the panel to open as soon as the screen is clear. Safe to call from a

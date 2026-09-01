@@ -41,13 +41,24 @@ public class QuestWatcher : MonoBehaviour
 
     private Coroutine _loop;
 
-    private void Start() => _loop = StartCoroutine(Loop());
+    private void Start()
+    {
+        _loop = StartCoroutine(Loop());
+        RpcLayer.OnSessionStart += OnSessionStart;
+    }
 
     private void OnDestroy()
     {
         if (_loop != null) StopCoroutine(_loop);
+        RpcLayer.OnSessionStart -= OnSessionStart;
         _reportedAt.Clear();
     }
+
+    // This object survives a logout, so without this a quest reported just
+    // before the player left would sit out its 60s retry window against a
+    // server that never heard it. The character key is the durable record --
+    // dropping the send times just lets the new session re-report at once.
+    private static void OnSessionStart() => _reportedAt.Clear();
 
     /// Server confirmed it reached a definitive answer for this quest, so the
     /// key has done its job and can be cleared. Called from RpcLayer.

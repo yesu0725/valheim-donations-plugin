@@ -120,7 +120,8 @@ The csproj expects these in `valheim-plugin/libs/`. Most come from Valheim's
 
 - `0Harmony.dll` (BepInEx)
 - `BepInEx.dll`
-- `assembly_valheim.dll`
+- `assembly_valheim.dll` — **this copy is the DEDICATED SERVER's build**, not the
+  client's. See the warning below before you decompile it.
 - `UnityEngine.dll`
 - `UnityEngine.CoreModule.dll`
 - **`UnityEngine.UnityWebRequestModule.dll`** ← needed for HTTPS polling. Copy
@@ -133,6 +134,22 @@ The csproj expects these in `valheim-plugin/libs/`. Most come from Valheim's
   `LayoutElement` on the cloned "Take All" button). Same.
 - **`UnityEngine.UIModule.dll`** ← `RectTransform`, needed by the same button. Same.
 - **`Unity.TextMeshPro.dll`** ← `TMP_Text`, for relabelling that clone. Same.
+
+> **`libs/assembly_valheim.dll` is the dedicated server's assembly.** Verified
+> 2026-09-01: byte-identical to
+> `Steam\steamapps\common\Valheim dedicated server\valheim_server_Data\Managed\assembly_valheim.dll`
+> (SHA-256 `84A1B34F...`, 2,119,680 bytes). The client's copy is a different file
+> (`3B26C851...`, 2,126,848 bytes).
+>
+> This is fine for **building** — it is a reference assembly and every call binds
+> by name at runtime, so a client executes the client's implementation. It is a
+> trap for **reading**. Decompile the one in `libs/` and `ZNet.IsDedicated()`
+> reads `return true;`, because in the server build it is a compile-time
+> constant. Anyone reasoning about client behaviour from that will conclude the
+> plugin's client-side RPC registration can never run, which is false — it
+> demonstrably does. **Decompile the client's copy when you want client
+> behaviour**, and treat anything role-related in `libs/` as suspect.
+
 - **`UnityEngine.ParticleSystemModule.dll`** ← needed for the Familiars' particle auras (`ParticleSystem` force-loop / scaling). Same.
 - **`UnityEngine.AnimationModule.dll`** ← needed for the Familiars' cloned creature `Animator`s. Same.
 - `Newtonsoft.Json.dll`

@@ -164,34 +164,45 @@ edit.
 > when the profile under test was simply running a weeks-old DLL.
 >
 > **Before concluding a code fix didn't work in-game,** compare the deployed
-> DLL's timestamp and size against `valheim-plugin/bin/Release/ValheimDonationSystem.dll`.
+> DLL's **SHA-256** against `valheim-plugin/bin/Release/ValheimDonationSystem.dll`
+> -- timestamp and size are weaker signals, and a same-size DLL from the previous
+> release is exactly what a stranded profile looks like. Check every Gale profile
+> and the dedicated server, not just the one you think is under test.
 
-> **Gale HARD-LINKS mod files across profiles, so "one destination" is not what
-> actually happens** (found 2026-08-31). Every Gale profile that has a given mod
-> version installed shares **one file on disk** — four profile paths, one NTFS
-> inode:
+> **Gale HARD-LINKS mod files across profiles -- but not all of them, and the
+> exception is the dangerous part.** Found 2026-08-31, **corrected 2026-09-01**.
+> Profiles that have a given mod version installed generally share **one file on
+> disk**, so `Copy-Item` into `HB Test` writes through the link into the others.
+> Measure it, never assume it:
 >
 > ```powershell
-> # all four print the same File ID
 > foreach ($p in (Get-ChildItem "$env:APPDATA\com.kesomannen.gale\valheim\profiles")) {
 >   fsutil file queryfileid "$($p.FullName)\BepInEx\plugins\TaegukGaming-Valheim_Donations\ValheimDonationSystem.dll"
 > }
 > ```
 >
-> `Copy-Item` overwrites a file's *contents*, so writing the DLL into `HB Test`
-> writes through the link into `Hearthbound Valheim`, `Hearthbound - Admin` and
-> `HB Modpack Ref` as well. **`deploy.ps1` has been updating the played profile
-> all along**, its own comment notwithstanding, and so has every deploy since the
-> move to Gale on 2026-08-17.
+> On 2026-08-31 all four printed the same File ID and that was written down as a
+> property of Gale. It is not. On **2026-09-01** three of them shared inode
+> `...1547b6` (`HB Test`, `Hearthbound Valheim`, `HB Modpack Ref`) while
+> **`Hearthbound - Admin` had its own file** (`...189b1d`) and did not follow the
+> deploy. Gale re-links on its own schedule -- an install, a re-install or a
+> profile edit can hand a profile a private copy at any time -- so the link is a
+> *coincidence you can observe*, never a distribution mechanism you can rely on.
 >
-> This cuts both ways and neither is obviously wrong, so it is written down
-> rather than "fixed": the played profile is never left on a stale DLL (the
-> failure that cost two debugging sessions under r2modman), but a build deployed
-> for testing is live on the played profile the moment it lands, with no separate
-> decision to promote it. If you ever want the isolation the comment promises,
-> `deploy.ps1` must **delete the destination first** and then copy — that breaks
-> the link and gives the test profile a file of its own. The dedicated server is
-> unaffected either way: its copy is standalone, not linked to anything.
+> That cost a round-trip immediately: the 5.22.3 relog fix was reported as still
+> broken, and the first thing the hashes showed was that **nothing had been
+> deployed at all** -- and that even after deploying, the Admin profile would
+> have stayed on 5.22.2.
+>
+> **`deploy.ps1` no longer trusts the link.** After copying it hashes every Gale
+> profile that has the mod against `bin/Release` and copies into any that do not
+> match, printing `ok` / `UPDATED` per profile. The guarantee is now the
+> script's, not the filesystem's: no profile is left on a stale DLL. The flip
+> side stands and is deliberate -- a build deployed for testing is live on the
+> played profile the moment it lands, with no separate decision to promote it. If
+> you ever want real isolation, `deploy.ps1` must delete the destination first
+> **and** drop the verification pass. The dedicated server is unaffected either
+> way: its copy is standalone, and promoting to it stays a manual step.
 
 ## Quest rewards: promote the ServerGuide YAML and the plugin DLL together
 

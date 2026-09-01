@@ -17,18 +17,25 @@ $dll  = Join-Path $here 'bin\Release\ValheimDonationSystem.dll'
 # any other profile; 2026-08-17: moved off r2modman to Gale, which stores
 # profiles under %APPDATA%\com.kesomannen.gale\valheim\profiles\).
 #
-# CAVEAT, measured 2026-08-31: "do not touch any other profile" is NOT what
-# happens under Gale. Gale hard-links mod files across profiles - all four
-# profiles here share ONE inode for this DLL (verify with `fsutil file
-# queryfileid` on each; the ids match). Copy-Item overwrites a file's contents,
-# so this write goes through the link and every profile holding this mod gets
-# the new DLL, the played one included.
+# CAVEAT, measured 2026-08-31 and CORRECTED 2026-09-01: "do not touch any other
+# profile" is NOT what happens under Gale. Gale hard-links mod files across
+# profiles, so this write goes through the link and other profiles get the new
+# DLL too, the played one included.
 #
-# Left as-is deliberately: it means the played profile is never stranded on a
-# stale DLL, which is the exact failure that cost two debugging sessions under
-# r2modman. To actually isolate the test profile, Remove-Item the destination
-# before copying - that breaks the link and gives it a file of its own. See the
-# Gale hard-link note in docs/OPERATIONS.md.
+# But NOT ALL OF THEM, and that is the trap. Measured 2026-09-01 with `fsutil
+# file queryfileid`: "HB Test", "Hearthbound Valheim" and "HB Modpack Ref" share
+# one inode; "Hearthbound - Admin" has its OWN file and does not follow. The
+# 2026-08-31 note claiming all four share one inode was wrong. A deploy looked
+# green while the Admin profile stayed on the previous release's DLL - the same
+# silent-staleness failure that cost two debugging sessions under r2modman,
+# wearing a new disguise.
+#
+# So the link is no longer TRUSTED to do the distribution: the verification pass
+# at the bottom of this script hashes every profile that has this mod and copies
+# into any that did not match. The link just means most of them are already done
+# by the time it runs. To actually isolate the test profile, Remove-Item the
+# destination before copying AND drop the verification pass. See the Gale
+# hard-link note in docs/OPERATIONS.md.
 #
 # Deliberately NOT deployed to any more, leave these alone:
 #   - the live/played client profile (currently "HB Server", previously
@@ -100,3 +107,38 @@ foreach ($pluginFolder in $pluginFolders) {
     Write-Host "  note: no valcoin_config.json yet at $cfg (the plugin writes a template on first launch)." -ForegroundColor DarkGray
   }
 }
+
+
+# --- verification: no profile is left on a stale DLL -------------------------
+#
+# The point of deploying through the hard link was that the PLAYED profile is
+# never stranded on an old build. That guarantee only holds for profiles that
+# actually share the inode, and one of them does not. Hashing is the only honest
+# check - a deploy that "looked green" while a profile ran last release's DLL is
+# precisely how a fixed bug gets reported as still broken.
+$galeProfiles = 'C:\Users\yesu0725\AppData\Roaming\com.kesomannen.gale\valheim\profiles'
+if (Test-Path $galeProfiles) {
+  $want = (Get-FileHash $dll -Algorithm SHA256).Hash
+  Write-Host ""
+  Write-Host "Verifying every Gale profile against the build ($($want.Substring(0,12))...)" -ForegroundColor Cyan
+
+  Get-ChildItem $galeProfiles -Recurse -Filter 'ValheimDonationSystem.dll' -ErrorAction SilentlyContinue | ForEach-Object {
+    $name = $_.FullName.Replace("$galeProfiles\", '').Split('\')[0]
+    if ((Get-FileHash $_.FullName -Algorithm SHA256).Hash -eq $want) {
+      Write-Host ("  ok      {0}" -f $name) -ForegroundColor DarkGray
+      return
+    }
+    # Stale: not linked to the one we just wrote. Fix it rather than only warning
+    # - a warning here is a warning nobody reads until they are mid-bug-hunt.
+    try {
+      Copy-Item $dll $_.FullName -Force
+      Write-Host ("  UPDATED {0}  (own file, not linked to HB Test)" -f $name) -ForegroundColor Yellow
+    } catch {
+      Write-Host ("  FAILED  {0}  ({1}) - is Valheim running?" -f $name, $_.Exception.Message) -ForegroundColor Red
+    }
+  }
+}
+
+# The dedicated server is deliberately NOT touched here; promoting to it stays a
+# manual, deliberate step. Check it by hand when a fix is server-side:
+#   Get-FileHash "C:\Program Files (x86)\Steam\steamapps\common\Valheim dedicated server\BepInEx\plugins\TaegukGaming-Valheim_Donations\ValheimDonationSystem.dll"

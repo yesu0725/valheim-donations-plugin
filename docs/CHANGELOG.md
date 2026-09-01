@@ -20,9 +20,9 @@ For "what is true right now" rather than "what changed", see
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Plugin | **5.22.2** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
+| Plugin | **5.23.0** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
 | Backend | **0.10.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
-| Thunderstore package | **5.22.2** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
+| Thunderstore package | **5.23.0** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
 > and player changelog all bumped — but no zip was ever uploaded. Its quest
@@ -65,6 +65,228 @@ newer plugin can ask for something an old backend doesn't serve:
 > undeployed backend.
 
 ---
+
+## Plugin 5.23.0 — familiar positions are a file, not a constant
+
+Backend unaffected. Client-side and purely cosmetic.
+
+Familiars hovered at one hard-coded spot: `ArmorVfx.CompanionOffset`
+(`-0.75, 1.55, 0`) plus the aura's own `Raise` nudge. That is a reasonable
+default and it is still exactly what ships — but it is a matter of taste, and
+taste should not need a rebuild.
+
+[`FamiliarLayout`](../valheim-plugin/FamiliarLayout.cs) reads
+`BepInEx/config/valcoin_familiars.yaml`, one `x`/`y`/`z` block per familiar, and
+re-reads it when the file's timestamp moves. `ArmorVfxManager` watches the
+version counter and repositions familiars it already has attached, so an edit
+lands in under a second without re-equipping the helmet. Full player-facing
+description in [SHOP.md](SHOP.md#moving-a-familiar--valcoin_familiarsyaml-5230).
+
+Decisions worth keeping:
+
+- **The template is generated from the registry, not typed out.** `DefaultFor`
+  returns `CompanionOffset + def.Raise`, and `BuildTemplate` writes those
+  numbers. "Default" and "what the build actually does" therefore cannot drift
+  apart — the failure mode where a shipped config file quietly disagrees with
+  the code it configures.
+- **Entries are distinguished by content, not indentation.** An entry is
+  `name:` with nothing after the colon; an axis is `x: <number>`. Keying on
+  exact indent would silently drop a hand-edited line that used two spaces where
+  the template used four — the single likeliest thing to happen to a file whose
+  entire purpose is being hand-edited. Tabs, any indent depth, uppercase names
+  and `-.5` / `+2` / `1.` all parse. Verified by round-tripping the generated
+  template through a mirror of the parser, plus the hand-edit cases above.
+- **A partial block keeps the shipped values for the axes it omits**, because
+  each entry is seeded with `DefaultFor` before parsing. Setting only `y` leaves
+  `x` and `z` alone instead of snapping them to 0.
+- **Polling the timestamp, not a `FileSystemWatcher`.** Watchers fire mid-write
+  and need debouncing; one `File.GetLastWriteTimeUtc` per second is free. Same
+  "poll, don't hook" reasoning as `GrantPoller` and `CatalogSync`.
+- **A read failure keeps the last good layout** rather than blanking every
+  position, and retries on the next timestamp change — a file caught mid-save
+  must not make every familiar jump to the origin.
+- **Scale is deliberately not configurable.** It is baked in at construction
+  (particle emission, the glow graft and the strip passes all multiply by
+  `def.Scale`), so it would need a rebuild rather than a nudge. Position is a
+  pure transform write, which is what makes it live.
+- **Loaded from `ArmorVfxManager.Awake`, not `Plugin.Awake`**, because that
+  component is never spawned on a dedicated server. A server that would never
+  read the file does not grow one.
+
+Also documented this release (no code change): **[SHOP.md](SHOP.md#buying-from-a-locally-hosted-world)
+now covers what buying from a locally hosted world means** — that ordinary
+players cannot (no `plugin_token`, so the panel is Offline and the buy is
+refused before any coins move), which effects cross back into shared state
+(coins, backend-tracked charges, weekly caps) versus stay local (items, perks,
+auras), and why it is not a new attack surface: `/api/spend` trusting
+caller-supplied prices is sound while the token stays with the operator, and the
+token already grants more directly than the shop path does.
+
+## Plugin 5.22.4 — the host of a local world can use the mod
+
+Backend unaffected. **Nothing here changes dedicated-server behaviour**, which is
+why it is safe to ship alongside 5.22.3 despite being untested in-game.
+
+Found on 2026-09-01 while testing 5.22.3: a purchase on the dedicated server
+worked, the same purchase on a locally hosted seed world did nothing at all --
+no item, no error, no reply. Unrelated to the relog bug; this had never worked.
+
+### "Server" and "dedicated server" are not the same thing
+
+Every fault here is one confusion, made in four places: code that means *"I am a
+headless server with no player at this keyboard"* asked `IsServer()`, which is
+also true for someone hosting a world from their own game.
+
+**1. The host is not one of their own peers.**
+[`UiActionRouter.Execute`](../valheim-plugin/UiActionRouter.cs) opened by
+resolving the sender out of `ZNet`'s peer list and returning if it found nobody.
+That list is *remote connections only* -- `ZNet.IsConnected` special-cases
+`uid == GetUID()` before it ever scans `m_peers`, precisely because self is not
+in there. So a host's every action -- buy, donate, gift, quest report, even
+`whoami` -- was dropped before reaching a handler, with nothing logged.
+
+`ZRoutedRpc` stamps a locally-handled call with its own `m_id`, and `ZNet` sets
+that from `ZDOMan.GetSessionID()` -- the same value `ZNet.GetUID()` returns. So
+"this came from the local host" is exactly `senderPeerID == ZNet.GetUID()`, and
+that is what `ResolveSender` now tests before falling back to
+`LocalIdentity.Steam64()` and `Player.m_localPlayer`. Unresolvable senders now
+log instead of vanishing.
+
+This fallback is not new to the codebase — `ValcoinWallet.Resolve` has carried
+it since the wallet API landed, with the comment *"the listen host is not in its
+own connected-peer list."* The knowledge existed; it had just never reached the
+panel's own router.
+
+**2. The host's panel threw away every reply.**
+`RpcLayer.HandlePanelOnClient` bailed on `IsServer()`, so even replies that were
+delivered correctly were dropped on arrival. And they *were* delivered:
+`PushPanelMessage` targets the host's own uid, and `ZRoutedRpc.InvokeRoutedRPC`
+runs a self-targeted call through `HandleRoutedRPC` locally
+(`if (targetPeerID == m_id || targetPeerID == 0)`) without touching the network.
+Now guarded on `IsDedicated()`. The catalog and quest-list handlers keep their
+`IsServer()` guard deliberately — a host is the authority on both and loaded them
+from its own YAML, so applying its own broadcast back to itself is a pointless
+round-trip through the wire format.
+
+**3. Delivery could not find the buyer.** `SteamIdResolver.ZdoFor` and
+`OnlinePlayerFor` both walked the peer list, so a host's `grant_item` purchase
+was refused by `Buy`'s pre-check ("couldn't find your character to deliver
+items") and a grant toast had nobody to show itself to. Both now fall back to
+`Player.m_localPlayer` for the local host. `ResolveTargetByName` got the same
+treatment, so a gift or admin adjustment aimed at the host's own name resolves.
+
+**4. Bought effects were invisible.** `ArmorVfxManager.Update` and
+`SoulkeeperPoller` also skipped on `IsServer()`, so a host rendered no auras at
+all -- their own or anyone else's -- and never refreshed their Soulkeeper
+charges. An `armor_vfx` purchase would have completed and then visibly done
+nothing. Both now skip only on `IsDedicated()`.
+
+For a dedicated server every one of these is a no-op (`IsDedicated()` is true, so
+the old branch is taken); for a plain client both flags are false and nothing
+changes. Only the listen-server host moves.
+
+### Verified statically, not yet in-game
+
+The mechanism was confirmed by decompiling the game's own `ZRoutedRpc` and `ZNet`
+(routing, `m_id`/`GetUID` equivalence, and `GetPeer` scanning `m_peers` only),
+and against the owner's BepInEx log from the 2026-09-01 listen-server session,
+which shows the panel opening and not one server-side `[Valcoin]` line for any
+action taken there. **The fix itself has not been exercised in a hosted world.**
+Nobody plays that way on this server, so it was not made a release blocker.
+
+> **Trap for anyone verifying this the same way.** `valheim-plugin/libs/assembly_valheim.dll`
+> is byte-identical to the **dedicated server's** assembly, not the client's
+> (SHA-256 `84A1B34F…`, 2,119,680 bytes). Decompile it and `ZNet.IsDedicated()`
+> reads `return true;` — a compile-time constant in that build. It is a reference
+> assembly, bound by name at runtime, so a client executes the client's real
+> implementation; the 5.22.3 registration logic depends on that and demonstrably
+> works (the owner's log shows both the server and client RPC registrations on
+> their listen server, which requires `IsDedicated()` to be false). Do not
+> "correct" working `IsDedicated()` logic based on that decompilation.
+
+## Plugin 5.22.3 — the RPC handlers survive a relog
+
+Backend unaffected. Client-side fix, but the same DLL should go to the server.
+
+**Verified in-game by the owner on 2026-09-01**, over the exact sequence that
+used to break it: purchase on the dedicated server (ok) -> log out -> log in to
+a locally hosted seed world -> log out -> log back in to the dedicated server ->
+purchase (ok). Three sessions in one process, with a **role change** in the
+middle, which is the harder half of the test: the middle session made the client
+a listen server, so the roles had to be re-read rather than latched from the
+first session. Before this fix the second session onward was dead.
+
+The purchase attempted on the locally hosted world failed, and that is expected
+and unrelated -- see "the host cannot buy from their own world" in
+[STATUS.md](STATUS.md).
+
+**The bug as reported:** donations and purchases work perfectly. Log out to the
+main menu and log back in *without closing Valheim*, and the system stops
+delivering — Valcoins are deducted and nothing arrives. Restarting the game
+fixes it; restarting the server does not.
+
+That last sentence is the whole diagnosis. Something that only a **process**
+restart clears, and that a server restart cannot touch, is client-side static
+state.
+
+### One `bool` that outlived the thing it described
+
+[`RpcLayer`](../valheim-plugin/RpcLayer.cs) guarded its handler registration
+with `_registeredServer` / `_registeredClient`. `ZRoutedRpc` — which owns the
+handler table — is built by `ZNet` when you enter a world and destroyed when you
+leave it. The plugin is loaded once for the life of the process. So on the second
+session the flags still read "registered" while the table they described no
+longer existed, and
+[`Plugin.InitRpcsWhenReady`](../valheim-plugin/Plugin.cs), a one-shot coroutine
+that had already completed, was never going to run again anyway.
+
+The client was then connected with **no handler** for `vc_panel`, `vc_catalog`,
+`vc_quests` or `vc_questack`. Outbound calls kept working, because
+`InvokeRoutedRPC` needs no registration — which is exactly what makes the
+failure mode so bad. A purchase reached the server and was **debited**, and then
+every reply was dropped on arrival:
+
+| Dropped | Consequence |
+|---|---|
+| `__ARMORVFX__` | An aura was paid for and never applied |
+| `__BUYRES__` | The panel sat on the working modal for 40s, then called a successful purchase a failure |
+| `buyfail` (never sent, because it answers `__ARMORVFX__`) | The compensating refund built in 5.22.0 could not fire |
+| `vc_questack` | Completed quests re-reported forever and never paid |
+| `vc_catalog` | The shop list stopped refreshing (masked: the parsed catalog is static and survived the relog) |
+
+Note what this means for 5.22.2's guarantee that a player is never left debited
+without delivery: that guarantee was intact on the server and unreachable from
+the client, because the one signal that triggers the refund was among the
+messages being dropped.
+
+### The fix
+
+- **Registration is now a fact about the session, not about the process.**
+  `RpcLayer` stores *which* `ZRoutedRpc` it registered on and compares by
+  reference against the current one, so a new instance re-registers. `Forget()`
+  drops the references between sessions so the dead instance can be collected.
+- **`Plugin.Update` does the registering**, replacing the one-shot coroutine.
+  Per-frame rather than on a timer, so the handlers are back before the
+  connection is up and nothing can arrive in a gap; once registered the work is
+  two reference comparisons. Both roles are re-read every frame rather than
+  latched, so leaving a dedicated server to host your own world (or the reverse)
+  registers the right half.
+- **`RpcLayer.OnSessionStart`** fires once per session (once per instance, so a
+  listen-server host that registers both halves still gets one event). Two
+  things that were also per-process now hang off it:
+  [`DonationPanel`](../valheim-plugin/DonationPanel.cs) clears `_isAdmin` and
+  re-asks `whoami` — admin rights are per-server and were being carried between
+  them — and [`QuestWatcher`](../valheim-plugin/QuestWatcher.cs) clears its
+  send-times so a quest reported just before a logout re-reports at once instead
+  of sitting out its 60s retry window.
+
+### Why the server never needed restarting
+
+A dedicated server's `ZNet` lives for the whole process, so its `ZRoutedRpc` is
+never replaced and its registration never went stale. Only the client half was
+broken, and only from its second session onward. The server-side guard had the
+same latent defect — it just had no way to be triggered short of a listen-server
+host relogging.
 
 ## Plugin 5.22.2 — the panel's own text, made legible on it
 

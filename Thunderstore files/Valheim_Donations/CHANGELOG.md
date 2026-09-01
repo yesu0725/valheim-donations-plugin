@@ -1,5 +1,24 @@
 # Changelog
 
+## 5.23.0
+
+- **You can move your familiar.** A new `BepInEx/config/valcoin_familiars.yaml` sets where each familiar hovers -- left/right, height, front/back -- with a separate block per familiar. Save the file and it moves within a second, in-game, without re-equipping your helmet, so you can nudge a number and watch it settle. It ships with the positions familiars already had, so it changes nothing until you edit it, and any familiar you delete from the file just keeps its default. This is your own view only -- it does not change what anyone else sees, and it has nothing to do with prices or Valcoins.
+
+*Includes 5.22.4 and 5.22.3 below.*
+
+## 5.22.4
+
+- **The mod now works when you host a world from your own game.** If you were the host rather than a player on someone else's server, nothing in the panel did anything at all -- buying, donating, gifting, quest payouts, even the Admin tab all silently did nothing, and gave no error to explain why. The server half of the mod was looking you up in its list of *connected players*, which never includes the person hosting. Armour familiars would not appear for a host either, and Soulkeeper charges were never refreshed. All fixed. **Nothing changes for players on a dedicated server**, which is the normal case.
+
+*Includes everything in 5.22.3 below. Client-side; update the server too if you run one.*
+
+## 5.22.3
+
+- **The shop works after you log out and back in.** Leaving to the main menu and rejoining the server — without closing Valheim — left the mod half-connected: the panel could still ask the server for things, but nothing the server sent back ever arrived. A purchase went through and took your Valcoins, and then the item, the armour familiar or the confirmation never came, and the automatic refund that exists for exactly that case never fired either, because it is triggered by a reply that was being dropped. Completed quests stopped paying out for the same reason. The only cure was to quit the game completely. The mod now re-connects its half of the link every time you enter a world, so the second, third and hundredth session of a play night behave like the first.
+- **Admin rights are re-checked per server.** The Admin tab was decided once per game launch, so joining a second server carried over what you were on the first.
+
+*Client-side fix — every player should update. Server operators should update too (same file), but no configuration changes and no server restart is required for the client fix to take effect.*
+
 ## 5.22.2
 
 Readability pass over the panel. 5.22.0 and 5.22.1 were never published.
