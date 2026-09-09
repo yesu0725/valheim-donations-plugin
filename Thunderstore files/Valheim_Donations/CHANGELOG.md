@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.23.1
+
+- **Valheim 1.0 support.** On 1.0 the familiar name on your helmet ("Bronze Helmet *of the Bat*") stopped appearing, because the game changed the method that builds item tooltips. Everything else kept working -- the familiar itself, its perks, purchases, quests and donations were never affected -- but the name is back. Every other place this mod hooks into the game was re-checked against 1.0 and is unchanged.
+
+*Update your client and your server. No configuration changes.*
+
 ## 5.23.0
 
 - **You can move your familiar.** A new `BepInEx/config/valcoin_familiars.yaml` sets where each familiar hovers -- left/right, height, front/back -- with a separate block per familiar. Save the file and it moves within a second, in-game, without re-equipping your helmet, so you can nudge a number and watch it settle. It ships with the positions familiars already had, so it changes nothing until you edit it, and any familiar you delete from the file just keeps its default. This is your own view only -- it does not change what anyone else sees, and it has nothing to do with prices or Valcoins.

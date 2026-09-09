@@ -519,11 +519,57 @@ internal static class ArmorVfxTooltipPatch
 
     private static bool Prepare()
     {
-        _target = AccessTools.Method(typeof(ItemDrop.ItemData), "GetTooltip",
-            new[] { typeof(ItemDrop.ItemData), typeof(int), typeof(bool), typeof(float), typeof(int) });
+        _target = FindTooltipMethod();
         if (_target == null)
             Debug.LogWarning("[Valcoin][ArmorVfx] GetTooltip not found — armor rename disabled (visual still works).");
+        else
+            Debug.Log("[Valcoin][ArmorVfx] tooltip patch bound to: " + Describe(_target));
         return _target != null;
+    }
+
+    // Find the static GetTooltip by SHAPE, not by an exact parameter list.
+    //
+    // This used to be AccessTools.Method(..., new[] { ItemData, int, bool, float, int }),
+    // and Valheim 1.0 broke it by adding a sixth parameter:
+    //
+    //   0.220:  GetTooltip(ItemData item, int qualityLevel, bool crafting, float worldLevel, int stackOverride = -1)
+    //   1.0.7:  GetTooltip(ItemData item, int qualityLevel, bool crafting, float worldLevel, int stackOverride = -1, bool appending = false)
+    //
+    // An explicit parameter-type array is an EXACT match, so the lookup simply
+    // stopped resolving. Prepare() then returned false and the familiar rename
+    // turned itself off — quietly, because degrading gracefully is exactly what
+    // that guard is for. Sibling mod Lost Scrolls II hit the identical change on
+    // 1.0.7 and fared worse: with no Prepare() guard it threw
+    // "Undefined target method" out of PatchAll.
+    //
+    // Matching on shape survives that whole class of change: an added optional
+    // parameter is the most common way Valheim evolves a method, and it should
+    // not cost a release. The static overload is the one whose first parameter
+    // is an ItemData; the instance overload (GetTooltip(int)) is not, and is a
+    // thin wrapper around this one anyway.
+    private static MethodBase FindTooltipMethod()
+    {
+        MethodBase best = null;
+        int bestCount = -1;
+        foreach (var m in AccessTools.GetDeclaredMethods(typeof(ItemDrop.ItemData)))
+        {
+            if (m == null || !m.IsStatic || m.Name != "GetTooltip") continue;
+            var ps = m.GetParameters();
+            if (ps.Length < 4 || ps[0].ParameterType != typeof(ItemDrop.ItemData)) continue;
+
+            // Prefer the WIDEST overload. If Valheim ever keeps a narrower one
+            // as a compatibility wrapper, the widest is the implementation it
+            // delegates to — patching that catches calls through both.
+            if (ps.Length > bestCount) { best = m; bestCount = ps.Length; }
+        }
+        return best;
+    }
+
+    private static string Describe(MethodBase m)
+    {
+        var names = new List<string>();
+        foreach (var p in m.GetParameters()) names.Add(p.ParameterType.Name + " " + p.Name);
+        return m.Name + "(" + string.Join(", ", names.ToArray()) + ")";
     }
 
     private static MethodBase TargetMethod() => _target;

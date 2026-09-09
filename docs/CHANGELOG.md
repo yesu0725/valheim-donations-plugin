@@ -20,9 +20,9 @@ For "what is true right now" rather than "what changed", see
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Plugin | **5.23.0** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
+| Plugin | **5.23.1** | [`Plugin.cs`](../valheim-plugin/Plugin.cs) `[BepInPlugin]` 3rd arg |
 | Backend | **0.10.0** | [`main.py`](../backend/app/main.py) `FastAPI(version=...)` |
-| Thunderstore package | **5.23.0** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
+| Thunderstore package | **5.23.1** | [`manifest.json`](../Thunderstore%20files/Valheim_Donations/manifest.json) `version_number` |
 
 > **5.18.0 was never published.** It was fully staged — manifest, package README
 > and player changelog all bumped — but no zip was ever uploaded. Its quest
@@ -65,6 +65,95 @@ newer plugin can ask for something an old backend doesn't serve:
 > undeployed backend.
 
 ---
+
+## Plugin 5.23.1 — Valheim 1.0 compatibility
+
+Backend unaffected. **One real break, found and fixed**; everything else in the
+plugin's game-facing surface was verified unchanged.
+
+Valheim **1.0.7** landed on 2026-09-09 (client buildid 25185596, Unity
+6000.0.75.2503836 — a patch bump from the 6000.0.61 the game already ran, not an
+engine change). BepInEx is unaffected: `BepInExPack Valheim 5.4.2350` /
+BepInEx 5.4.23.5 loads and runs the chainloader normally on it.
+
+### `ItemData.GetTooltip` grew a parameter
+
+```
+0.220:  GetTooltip(ItemData item, int qualityLevel, bool crafting, float worldLevel, int stackOverride = -1)
+1.0.7:  GetTooltip(ItemData item, int qualityLevel, bool crafting, float worldLevel, int stackOverride = -1, bool appending = false)
+```
+
+`ArmorVfxTooltipPatch` resolved it with an explicit five-type parameter array,
+and `AccessTools.Method` matches a parameter list **exactly** — so the lookup
+returned null, `Prepare()` returned false, and the familiar rename ("Bronze
+Helmet *of the Bat*") turned itself off. Silently, because that is precisely
+what the guard is for: the familiar visual, the perks and every purchase kept
+working, and a warning went to the log.
+
+The guard is also what separates this from the sibling mod's version of the same
+day: **Lost Scrolls II hit the identical change** on 1.0.7 and, having no
+`Prepare()`, threw `ArgumentException: Undefined target method` out of
+`PatchAll` — the failure mode this plugin's guards were added to prevent.
+
+The lookup now matches on **shape** rather than an exact parameter list: the
+static overload is the one whose first parameter is an `ItemData` (the instance
+`GetTooltip(int)` is a thin wrapper around it), and where several qualify it
+takes the widest, which is the implementation any narrower compatibility wrapper
+would delegate to. An added optional parameter is the commonest way Valheim
+evolves a method; it should not cost a release. The bound signature is now
+logged at startup, so the next such change is one line in the log rather than a
+silently missing feature.
+
+### What was checked, and how
+
+Compiling against the 1.0.7 assembly is necessary but nowhere near sufficient —
+this plugin reaches most of the game through reflection and Harmony, none of
+which the compiler sees. So each was verified against the shipped 1.0.7
+assemblies:
+
+- **Every Harmony target** — `Player.TakeInput` / `OnDeath` / `OnSpawned(bool)`,
+  `PlayerController.TakeInput(bool)`, `Skills.LowerAllSkills`, `Menu.Show`,
+  `InventoryGui.Show`, `InventoryGui.DoCrafting(Player)`,
+  `InventoryGui.UpdateRecipe(Player, float)`: signatures **byte-identical** to
+  0.220.
+- **Every reflected member** — `Humanoid.m_helmetItem`/`m_chestItem`/
+  `m_legItem`/`m_shoulderItem`; `VisEquipment.m_helmetItemInstance`/`m_helmet`/
+  `m_chestItemInstances`/`m_legItemInstances`/`m_bodyModel`;
+  `InventoryGui.m_craftUpgradeItem`/`m_selectedRecipe`/`m_recipeDecription`
+  (Valheim's own typo, still there)/`m_itemCraftType`;
+  `ItemData.m_customData`/`m_gridPos`/`m_quality`/`m_stack`/`m_equipped`;
+  `GameCamera.m_mouseCapture`; `Player.m_enableAutoPickup`; all six `Valkyrie`
+  privates; `ZSteamMatchmaking.instance`/`GetSteamID`: **all present**.
+- **`ZInput`'s nine input-block methods and `GetMouseScrollWheel`**, and
+  `Localization.instance` / `Localize(string)`: present, unchanged. (Both types
+  live outside `assembly_valheim` — `assembly_utils` and `assembly_guiutils` —
+  which is why the plugin resolves them by name.)
+- **The fix itself was proven against the real 1.0.7 assembly**, not assumed: a
+  reflection probe over
+  `Valheim/valheim_Data/Managed/assembly_valheim.dll` confirms the old five-type
+  lookup returns `null`, the new shape match binds the six-parameter overload,
+  and its first parameter is still named `item` — the name the Postfix injects
+  on.
+
+### Still unverified: prefab names
+
+Familiar sources (`Bat`, `Ghost`, `Deathsquito`, `Hatchling`, `Wraith`,
+`Volture`, `Gjall`, `FallenValkyrie`), `CapeFeather` for the feather-fall
+effect, `vfx_spawn_small`, and every prefab id in `valcoin_shop.yaml`'s
+`grant_item` SKUs live in asset bundles, not in the assemblies — they cannot be
+checked statically and need one in-game pass. 1.0 added Deep North content
+rather than removing creatures, so breakage is unlikely; and resolution failure
+degrades to a `[Valcoin][ArmorVfx]` log with the purchase and rename still
+succeeding, never a crash.
+
+### Not our bug, but it is in the same modpack
+
+The 1.0.7 log also carries
+`MissingMethodException: Method not found: void .ConsoleCommand..ctor(...)` from
+`Terminal.InitTerminal` — 1.0 changed the `ConsoleCommand` constructor. That is
+a **Jotunn** (2.29.2) issue, not this plugin's: the console/chat path was
+removed here in 5.2.0 and nothing in this codebase touches `Terminal` or
+`ConsoleCommand`. It needs a Jotunn update.
 
 ## Plugin 5.23.0 — familiar positions are a file, not a constant
 

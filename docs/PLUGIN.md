@@ -120,8 +120,9 @@ The csproj expects these in `valheim-plugin/libs/`. Most come from Valheim's
 
 - `0Harmony.dll` (BepInEx)
 - `BepInEx.dll`
-- `assembly_valheim.dll` — **this copy is the DEDICATED SERVER's build**, not the
-  client's. See the warning below before you decompile it.
+- `assembly_valheim.dll` — **the CLIENT's 1.0.7 build** since 2026-09-09. It used
+  to be the dedicated server's; see the warning below, which is still worth
+  reading because the two builds differ.
 - `UnityEngine.dll`
 - `UnityEngine.CoreModule.dll`
 - **`UnityEngine.UnityWebRequestModule.dll`** ← needed for HTTPS polling. Copy
@@ -135,20 +136,28 @@ The csproj expects these in `valheim-plugin/libs/`. Most come from Valheim's
 - **`UnityEngine.UIModule.dll`** ← `RectTransform`, needed by the same button. Same.
 - **`Unity.TextMeshPro.dll`** ← `TMP_Text`, for relabelling that clone. Same.
 
-> **`libs/assembly_valheim.dll` is the dedicated server's assembly.** Verified
-> 2026-09-01: byte-identical to
-> `Steam\steamapps\common\Valheim dedicated server\valheim_server_Data\Managed\assembly_valheim.dll`
-> (SHA-256 `84A1B34F...`, 2,119,680 bytes). The client's copy is a different file
-> (`3B26C851...`, 2,126,848 bytes).
+> **Which build `libs/assembly_valheim.dll` came from matters, and it has
+> changed.** It is now the **client's Valheim 1.0.7** copy (swapped 2026-09-09,
+> when 1.0 shipped, so the plugin builds against the game people actually run).
+> Until then it was the **dedicated server's** build.
 >
-> This is fine for **building** — it is a reference assembly and every call binds
-> by name at runtime, so a client executes the client's implementation. It is a
-> trap for **reading**. Decompile the one in `libs/` and `ZNet.IsDedicated()`
-> reads `return true;`, because in the server build it is a compile-time
-> constant. Anyone reasoning about client behaviour from that will conclude the
-> plugin's client-side RPC registration can never run, which is false — it
-> demonstrably does. **Decompile the client's copy when you want client
-> behaviour**, and treat anything role-related in `libs/` as suspect.
+> Either builds fine — it is a reference assembly and every call binds by name at
+> runtime — but they are not the same file and they do not decompile the same.
+> The trap, recorded because it cost real confusion: in the **server** build
+> `ZNet.IsDedicated()` is compiled to `return true;`, a constant. Read that as
+> client behaviour and you conclude the plugin's client-side RPC registration can
+> never run, which is false. So:
+>
+> - decompile `libs/` only to check that a member still EXISTS;
+> - to reason about **client** behaviour, decompile
+>   `Steam\steamapps\common\Valheim\valheim_Data\Managed\assembly_valheim.dll`;
+> - to reason about **server** behaviour, decompile the dedicated server's
+>   `valheim_server_Data\Managed\assembly_valheim.dll`;
+> - treat anything role-related as suspect until you know which build you read.
+>
+> `libs/` is git-ignored (the blanket `*.dll` rule), so swapping it is a local
+> build-environment change and never a repo change — which also means a fresh
+> clone must be pointed at a current assembly by hand.
 
 - **`UnityEngine.ParticleSystemModule.dll`** ← needed for the Familiars' particle auras (`ParticleSystem` force-loop / scaling). Same.
 - **`UnityEngine.AnimationModule.dll`** ← needed for the Familiars' cloned creature `Animator`s. Same.
