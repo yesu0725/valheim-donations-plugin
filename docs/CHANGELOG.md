@@ -135,6 +135,22 @@ assemblies:
   and its first parameter is still named `item` — the name the Postfix injects
   on.
 
+### The BepInEx pack pin moved too
+
+`manifest.json` pinned `denikson-BepInExPack_Valheim-**5.4.2333**`, which
+predates 1.0. The pack that is *known* to run on 1.0.7 is **5.4.2350** — that is
+what the successful 1.0.7 launch log reports ("User is running BepInExPack
+Valheim version 5.4.2350 from Thunderstore"). A Thunderstore dependency is what
+a fresh install pulls, so shipping a 1.0-compatible plugin behind a pre-1.0 pack
+would hand new players a BepInEx that may not load at all — and the symptom
+would read as "the mod is broken on 1.0". Pin bumped to 5.4.2350.
+
+Worth checking locally for the same reason: on 2026-09-09 the `HB Test` and
+`Hearthbound Valheim` profiles were still on pack **5.4.2333** while only
+`TG Mods Only` had 5.4.2350. Update the pack in whichever profile you test in,
+or BepInEx may not come up on 1.0.7 and the plugin will never get a chance to
+run.
+
 ### Still unverified: prefab names
 
 Familiar sources (`Bat`, `Ghost`, `Deathsquito`, `Hatchling`, `Wraith`,

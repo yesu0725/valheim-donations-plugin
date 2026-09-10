@@ -4,6 +4,8 @@
 
 - **Valheim 1.0 support.** On 1.0 the familiar name on your helmet ("Bronze Helmet *of the Bat*") stopped appearing, because the game changed the method that builds item tooltips. Everything else kept working -- the familiar itself, its perks, purchases, quests and donations were never affected -- but the name is back. Every other place this mod hooks into the game was re-checked against 1.0 and is unchanged.
 
+- **Requires the current BepInEx pack.** The dependency now points at BepInExPack Valheim 5.4.2350, which is the version that runs on Valheim 1.0. If you update this mod by hand rather than through a mod manager, update that pack too.
+
 *Update your client and your server. No configuration changes.*
 
 ## 5.23.0

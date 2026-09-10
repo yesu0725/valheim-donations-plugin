@@ -4,7 +4,7 @@
   "version_number": "5.23.1",
   "website_url": "https://github.com/yesu0725/valheim-donations-plugin",
   "dependencies": [
-    "denikson-BepInExPack_Valheim-5.4.2333",
+    "denikson-BepInExPack_Valheim-5.4.2350",
     "ValheimModding-JsonDotNET-13.0.4"
   ]
 }

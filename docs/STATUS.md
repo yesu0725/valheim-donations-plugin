@@ -16,7 +16,7 @@ before believing any bug report (see the DLL-timestamp trap below).
 | **Dedicated server** | **5.23.1** | Promoted 2026-09-09 while stopped. DLL SHA-256 matches `bin/Release`; `manifest.json` bumped in place, keeping its own dependency list (no `denikson-BepInExPack_Valheim` -- that is the client pack). **Not started since.** Note this is the PLUGIN version -- the Valheim dedicated server itself is still on the May build and must be updated separately; see the box below. |
 | **Every Gale profile (test client)** | **5.23.1** | Deployed 2026-09-09, all four verified by SHA-256. The hard-link split MOVED again: this time **both `Hearthbound - Admin` and `HB Modpack Ref`** needed their own write (on 2026-09-01 it was Admin alone). Gale re-links on its own schedule -- exactly why `deploy.ps1` hashes every profile instead of trusting the link. |
 | `bin/Release` | **5.23.1** | Clean build (0 errors) against the **Valheim 1.0.7 client assembly**, 2026-09-09. SHA-256 `D09522EA4F72...`. |
-| Thunderstore **zip** | — | No 5.23.1 zip built yet. The `v5.23.0` and `v5.22.3` zips on disk are both **superseded and must not be uploaded**: neither carries the 1.0 tooltip fix. |
+| Thunderstore **zip** | **5.23.1** | `Valheim_Donations-v5.23.1_20260909-2127.zip`, built 2026-09-09. Five files flat at the root, DLL hash-checked against `bin/Release`, and its `manifest.json` verified **from inside the zip** (it pins BepInEx pack 5.4.2350). **Ready to upload; the upload is the owner's step.** The `v5.23.0` and `v5.22.3` zips on disk are superseded and must not be uploaded -- neither carries the 1.0 fix. |
 
 **VALHEIM 1.0.7 SHIPPED ON 2026-09-09 AND THE GAME IS THE HEADLINE, NOT THE
 MOD.** Client buildid 25185596, Unity 6000.0.75.2503836 (a patch bump from the
@@ -31,13 +31,21 @@ unchanged against the 1.0.7 assemblies, and the fix was proven with a reflection
 probe against the shipped DLL rather than assumed. Full account in
 [CHANGELOG.md](CHANGELOG.md).
 
-> ### The blocker is not the mod: THE DEDICATED SERVER IS STILL ON THE MAY BUILD
+> ### Before testing: CHECK THE BepInEx PACK IN THE PROFILE YOU LAUNCH
 >
-> Steam app **896660** (Valheim Dedicated Server) is at buildid **21981590**,
-> last updated **2026-05-07** — while the client is on 1.0.7 as of 2026-09-09.
-> A 1.0.7 client cannot join a 0.220-era server at all, mod or no mod. **Update
-> the dedicated server through SteamCMD before testing anything**, and expect to
-> re-check the sibling mods on it too. Nothing in this repo can work around that.
+> The pack that demonstrably runs on 1.0.7 is **5.4.2350**. On 2026-09-09 only
+> the `TG Mods Only` profile had it — `HB Test` and `Hearthbound Valheim` were
+> still on **5.4.2333**, which predates 1.0. If BepInEx does not come up, the
+> plugin never loads and the symptom reads as "the mod is broken on 1.0". Update
+> the pack in Gale for whichever profile you test in. `manifest.json`'s
+> dependency was bumped to 5.4.2350 for the same reason, so fresh installs pull
+> a pack that works.
+
+**The dedicated server is now on 1.0** (buildid **25185644**, Unity
+6000.0.75.2503836, updated 2026-09-09 10:27), and the Steam update left BepInEx,
+the plugin and the valcoin configs untouched. The plugin compiles clean against
+**both** 1.0 assemblies — the client's and the dedicated server's — so its static
+surface is satisfied in both roles.
 
 **Untested in-game.** 5.23.1 is deployed to all four Gale profiles and the
 dedicated server but nothing has been launched with it. Two things want a real
@@ -206,7 +214,7 @@ Full reasoning for all of the above is in the 5.21.1 and 5.21.2 entries of
   **charge ledger** (`charges` table, `grant_charges` on `/api/spend`,
   `/api/charges/consume`, and `charges` + `owned_skus` + `weekly_usage` on
   `/api/state`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Plugin version:** `5.23.0` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
+- **Plugin version:** `5.23.1` (see [Plugin.cs:13](../valheim-plugin/Plugin.cs)).
   **Verified in-game and deployed 2026-08-31.**
   **5.22.2** makes the panel's text legible on the wood it now wears: 5.22.1 used
   the reference screenshot's colours literally, and mid-tone text on a mid-tone
