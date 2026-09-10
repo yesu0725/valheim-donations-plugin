@@ -145,11 +145,16 @@ a fresh install pulls, so shipping a 1.0-compatible plugin behind a pre-1.0 pack
 would hand new players a BepInEx that may not load at all — and the symptom
 would read as "the mod is broken on 1.0". Pin bumped to 5.4.2350.
 
-Worth checking locally for the same reason: on 2026-09-09 the `HB Test` and
-`Hearthbound Valheim` profiles were still on pack **5.4.2333** while only
-`TG Mods Only` had 5.4.2350. Update the pack in whichever profile you test in,
-or BepInEx may not come up on 1.0.7 and the plugin will never get a chance to
-run.
+Worth checking locally for the same reason. Per Gale's own database, confirmed
+by hashing the pack files: `HB Test` and `TG Mods Only` are on **5.4.2350**;
+`Hearthbound Valheim`, `Hearthbound - Admin` and `HB Modpack Ref` are still on
+**5.4.2333** and need updating before they will run 1.0.
+
+Method note, because getting this wrong cost a round-trip: the pack version was
+first read out of a profile's `LogOutput.log` and that answer was **wrong** —
+`HB Test`'s log predated its own pack update by two days, so an already-updated
+profile looked stale. A log says what was true at launch. Read
+`data.sqlite3` (`profiles.mods`) or hash the pack files.
 
 ### Still unverified: prefab names
 

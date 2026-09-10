@@ -31,15 +31,40 @@ unchanged against the 1.0.7 assemblies, and the fix was proven with a reflection
 probe against the shipped DLL rather than assumed. Full account in
 [CHANGELOG.md](CHANGELOG.md).
 
-> ### Before testing: CHECK THE BepInEx PACK IN THE PROFILE YOU LAUNCH
+> ### BepInEx pack per profile — read Gale, not the log
 >
-> The pack that demonstrably runs on 1.0.7 is **5.4.2350**. On 2026-09-09 only
-> the `TG Mods Only` profile had it — `HB Test` and `Hearthbound Valheim` were
-> still on **5.4.2333**, which predates 1.0. If BepInEx does not come up, the
-> plugin never loads and the symptom reads as "the mod is broken on 1.0". Update
-> the pack in Gale for whichever profile you test in. `manifest.json`'s
-> dependency was bumped to 5.4.2350 for the same reason, so fresh installs pull
-> a pack that works.
+> The pack that demonstrably runs on 1.0.7 is **5.4.2350**. As of 2026-09-09,
+> from Gale's own database and confirmed by hashing the pack files on disk:
+>
+> | Profile | Pack |
+> |---|---|
+> | `HB Test` | **5.4.2350** ✅ ready for 1.0 |
+> | `TG Mods Only` | **5.4.2350** ✅ |
+> | `Hearthbound Valheim` | 5.4.2333 ⚠️ pre-1.0 |
+> | `Hearthbound - Admin` | 5.4.2333 ⚠️ pre-1.0 |
+> | `HB Modpack Ref` | 5.4.2333 ⚠️ pre-1.0 |
+>
+> So the **test** profile is fine; the **played** profiles still need the pack
+> updated in Gale before they will run 1.0. If BepInEx does not come up the
+> plugin never loads, and the symptom reads as "the mod is broken on 1.0".
+> `manifest.json`'s dependency was bumped to 5.4.2350 so fresh installs pull a
+> pack that works.
+>
+> **Do not read a pack version out of `LogOutput.log`.** That was done here on
+> 2026-09-09 and produced a wrong answer: `HB Test`'s log was from 2026-09-07,
+> two days before its pack was updated, so it reported the old version for an
+> already-updated profile. A log records what was true at launch. The
+> authoritative sources are Gale's `data.sqlite3` (`profiles.mods`, a JSON array
+> of `fullName` entries) and the hashes of the pack files themselves.
+
+> ### Gale's mod list and the deployed DLL disagree, on purpose
+>
+> Gale records `TaegukGaming-Valheim_Donations-**5.23.0**` for `HB Test` while
+> the DLL on disk is **5.23.1**, because `deploy.ps1` overwrites the file
+> directly, under the manager. BepInEx loads the file, so testing is unaffected —
+> but **a Gale repair, reinstall or "update all" on that mod would replace the
+> hand-deployed build with the packaged 5.23.0**. Re-run `deploy.ps1` if that
+> ever happens.
 
 **The dedicated server is now on 1.0** (buildid **25185644**, Unity
 6000.0.75.2503836, updated 2026-09-09 10:27), and the Steam update left BepInEx,
