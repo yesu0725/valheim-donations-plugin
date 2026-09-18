@@ -169,10 +169,37 @@ edit.
 > release is exactly what a stranded profile looks like. Check every Gale profile
 > and the dedicated server, not just the one you think is under test.
 
-> **Gale HARD-LINKS mod files across profiles -- but not all of them, and the
-> exception is the dangerous part.** Found 2026-08-31, **corrected 2026-09-01**.
-> Profiles that have a given mod version installed generally share **one file on
-> disk**, so `Copy-Item` into `HB Test` writes through the link into the others.
+> **Deploy rule (owner's instruction, 2026-08-07, reaffirmed 2026-09-18): a new
+> build goes to the `HB Test` Gale profile and to NO other profile.** The played
+> profiles and the dedicated server are promoted by hand after testing.
+>
+> **Gale hard-links a mod's files across profiles, which silently breaks that
+> rule if you just copy.** Every profile with the same version installed shares
+> one NTFS inode (measured 2026-08-31, 2026-09-01, 2026-09-09 and 2026-09-18 --
+> which profiles share it changes as Gale re-links; on 2026-09-18 it was all
+> five). `Copy-Item` overwrites a file's *contents*, so copying onto a linked
+> file writes through the link into every profile sharing it. From the move to
+> Gale on 2026-08-17 until 2026-09-18 that is what every deploy did, and from
+> 2026-09-01 a verification pass made it worse by deliberately copying into any
+> profile whose hash did not match. Both are gone.
+>
+> **`deploy.ps1` now deletes HB Test's DLL before copying.** Removing one link of
+> a hard-linked file drops only that directory entry -- the other profiles keep
+> their bytes -- and the copy that follows is HB Test's own file. Verified
+> 2026-09-18 with `fsutil file queryfileid`: before the run all five profiles
+> shared inode `...58936`; after it HB Test was on `...5b11d` and the other four
+> were unchanged in both inode and hash. The script snapshots every other
+> profile's hash before writing and reports `untouched` / `CHANGED!` per profile
+> afterwards, so "nothing else moved" is demonstrated on every run, not assumed.
+> Gale may re-link HB Test the next time it installs or updates the mod there;
+> the next deploy simply breaks it again.
+>
+> **The report at the end is read-only.** It prints which build every profile is
+> on because guessing that has cost debugging sessions, but it writes nothing.
+> To put a build on a played profile, do it deliberately: Gale's own update
+> flow, or a hand copy you chose to make. The dedicated server is standalone
+> (not linked to anything) and stays a manual promotion.
+>
 > Measure it, never assume it:
 >
 > ```powershell
@@ -180,29 +207,6 @@ edit.
 >   fsutil file queryfileid "$($p.FullName)\BepInEx\plugins\TaegukGaming-Valheim_Donations\ValheimDonationSystem.dll"
 > }
 > ```
->
-> On 2026-08-31 all four printed the same File ID and that was written down as a
-> property of Gale. It is not. On **2026-09-01** three of them shared inode
-> `...1547b6` (`HB Test`, `Hearthbound Valheim`, `HB Modpack Ref`) while
-> **`Hearthbound - Admin` had its own file** (`...189b1d`) and did not follow the
-> deploy. Gale re-links on its own schedule -- an install, a re-install or a
-> profile edit can hand a profile a private copy at any time -- so the link is a
-> *coincidence you can observe*, never a distribution mechanism you can rely on.
->
-> That cost a round-trip immediately: the 5.22.3 relog fix was reported as still
-> broken, and the first thing the hashes showed was that **nothing had been
-> deployed at all** -- and that even after deploying, the Admin profile would
-> have stayed on 5.22.2.
->
-> **`deploy.ps1` no longer trusts the link.** After copying it hashes every Gale
-> profile that has the mod against `bin/Release` and copies into any that do not
-> match, printing `ok` / `UPDATED` per profile. The guarantee is now the
-> script's, not the filesystem's: no profile is left on a stale DLL. The flip
-> side stands and is deliberate -- a build deployed for testing is live on the
-> played profile the moment it lands, with no separate decision to promote it. If
-> you ever want real isolation, `deploy.ps1` must delete the destination first
-> **and** drop the verification pass. The dedicated server is unaffected either
-> way: its copy is standalone, and promoting to it stays a manual step.
 
 ## Quest rewards: promote the ServerGuide YAML and the plugin DLL together
 

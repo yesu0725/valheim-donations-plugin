@@ -36,8 +36,10 @@ clients fetch them at runtime.
    - (Optionally also update `docs/STATUS.md`'s plugin version line.)
 2. Rebuild: `cd valheim-plugin; dotnet build -c Release`
 3. Deploy to the **test profile** to verify in-game (`deploy.ps1` — see
-   [PLUGIN.md](PLUGIN.md)). It no longer touches the played profile or the
-   dedicated server; promote there manually once the build is verified.
+   [OPERATIONS.md](OPERATIONS.md)). It writes to `HB Test` **only** — it breaks
+   Gale's hard link first so the write cannot reach the played profiles — and
+   never touches the dedicated server; promote there manually once the build is
+   verified.
 4. Copy the fresh DLL into the package folder:
    ```powershell
    Copy-Item valheim-plugin\bin\Release\ValheimDonationSystem.dll `

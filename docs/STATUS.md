@@ -14,7 +14,7 @@ before believing any bug report (see the DLL-timestamp trap below).
 |---|---|---|
 | **Thunderstore (public)** | **5.22.2** | Published 2026-08-31 13:33 UTC. **This is what every player's client runs**, and it is now two problems behind: it still has the relog bug, and it predates Valheim 1.0. This is the only number that matters until 5.23.1 is published. |
 | **Dedicated server** | **5.23.1** | Promoted 2026-09-09 while stopped. DLL SHA-256 matches `bin/Release`; `manifest.json` bumped in place, keeping its own dependency list (no `denikson-BepInExPack_Valheim` -- that is the client pack). **Not started since.** Note this is the PLUGIN version -- the Valheim dedicated server itself is still on the May build and must be updated separately; see the box below. |
-| **Every Gale profile (test client)** | **5.23.1** | Deployed 2026-09-09, all four verified by SHA-256. The hard-link split MOVED again: this time **both `Hearthbound - Admin` and `HB Modpack Ref`** needed their own write (on 2026-09-01 it was Admin alone). Gale re-links on its own schedule -- exactly why `deploy.ps1` hashes every profile instead of trusting the link. |
+| **`HB Test` (the only deploy target)** | **5.23.1** | Deployed 2026-09-09; re-deployed 2026-09-18 with the link-breaking script, so it now has its own inode. The other Gale profiles happen to also be on 5.23.1 -- a leftover of the old write-through behaviour, not something the script does any more -- and are **not** deploy targets. |
 | `bin/Release` | **5.23.1** | Clean build (0 errors) against the **Valheim 1.0.7 client assembly**, 2026-09-09. SHA-256 `D09522EA4F72...`. |
 | Thunderstore **zip** | **5.23.1** | `Valheim_Donations-v5.23.1_20260909-2127.zip`, built 2026-09-09. Five files flat at the root, DLL hash-checked against `bin/Release`, and its `manifest.json` verified **from inside the zip** (it pins BepInEx pack 5.4.2350). **Ready to upload; the upload is the owner's step.** The `v5.23.0` and `v5.22.3` zips on disk are superseded and must not be uploaded -- neither carries the 1.0 fix. |
 
@@ -89,20 +89,15 @@ change (it has no `Prepare()` guard, so its patch class aborts), and a
 found there, neither was published; same rule that burned 5.18.0. Their zips are
 still on disk next to the published one; ignore them.
 
-**Gale hard-links mod files across profiles -- but NOT all of them.** The
-2026-08-31 note here said all four profiles share one NTFS inode and drew the
-conclusion that `deploy.ps1` has never been "test profile only". The first half
-was wrong. Measured again 2026-09-01: `HB Test`, `Hearthbound Valheim` and
-`HB Modpack Ref` share inode `...1547b6`; **`Hearthbound - Admin` has its own
-file** and does not follow a deploy. Gale re-links on its own schedule, so this
-is an observation with a date on it, never a rule.
-
-The conclusion still holds -- a deploy does reach the played profile, so it was
-never test-only -- but the mechanism is no longer trusted to do it.
-`deploy.ps1` now hashes every Gale profile after copying and writes into any
-that did not match, printing `ok`/`UPDATED` per profile; that is what caught the
-Admin profile. The dedicated server's copy is standalone and unaffected, and
-promoting to it stays manual. Details in [OPERATIONS.md](OPERATIONS.md).
+**Deploy rule, reaffirmed 2026-09-18: a new build goes to `HB Test` and to no
+other Gale profile.** Gale hard-links the DLL across profiles (on 2026-09-18,
+all five shared one inode), so a plain copy writes through the link into the
+played profiles -- which is what every deploy had been doing since the move to
+Gale, and what the 2026-09-01 verification pass then did on purpose. Both are
+gone. `deploy.ps1` now deletes HB Test's DLL before copying, giving it its own
+inode, and proves on every run that the other profiles' hashes did not move.
+Its end-of-run report is read-only. Verified by inode before/after on
+2026-09-18. Details in [OPERATIONS.md](OPERATIONS.md).
 
 **Still unexercised: the purchase retry/refund path.** Everything else in
 5.22.2 has now been used in anger, but the retry and the compensating refund
