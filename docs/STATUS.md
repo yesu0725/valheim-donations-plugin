@@ -5,7 +5,7 @@ files before trusting it if it's been a while. For *what changed* rather than
 *what's true now*, see [CHANGELOG.md](CHANGELOG.md), which also carries the
 plugin↔backend compatibility matrix.
 
-## Where things stand — 2026-09-09
+## Where things stand — 2026-09-18
 
 **Deployed / published right now.** These drift apart constantly; check them
 before believing any bug report (see the DLL-timestamp trap below).
@@ -13,7 +13,7 @@ before believing any bug report (see the DLL-timestamp trap below).
 | Target | Plugin | Notes |
 |---|---|---|
 | **Thunderstore (public)** | **5.22.2** | Published 2026-08-31 13:33 UTC. **This is what every player's client runs**, and it is now two problems behind: it still has the relog bug, and it predates Valheim 1.0. This is the only number that matters until 5.23.1 is published. |
-| **Dedicated server** | **5.23.1** | Promoted 2026-09-09 while stopped. DLL SHA-256 matches `bin/Release`; `manifest.json` bumped in place, keeping its own dependency list (no `denikson-BepInExPack_Valheim` -- that is the client pack). **Not started since.** Note this is the PLUGIN version -- the Valheim dedicated server itself is still on the May build and must be updated separately; see the box below. |
+| **Dedicated server** | **5.23.1** | Promoted 2026-09-09 while stopped. DLL SHA-256 matches `bin/Release`; `manifest.json` bumped in place, keeping its own dependency list (no `denikson-BepInExPack_Valheim` -- that is the client pack). The Valheim server itself is on **1.0** (buildid 25185644) as of 2026-09-09 10:27; the Steam update left BepInEx, the plugin and the valcoin configs untouched. Promotion here is manual and stays manual. |
 | **`HB Test` (the only deploy target)** | **5.23.1** | Deployed 2026-09-09; re-deployed 2026-09-18 with the link-breaking script, so it now has its own inode. The other Gale profiles happen to also be on 5.23.1 -- a leftover of the old write-through behaviour, not something the script does any more -- and are **not** deploy targets. |
 | `bin/Release` | **5.23.1** | Clean build (0 errors) against the **Valheim 1.0.7 client assembly**, 2026-09-09. SHA-256 `D09522EA4F72...`. |
 | Thunderstore **zip** | **5.23.1** | `Valheim_Donations-v5.23.1_20260909-2127.zip`, built 2026-09-09. Five files flat at the root, DLL hash-checked against `bin/Release`, and its `manifest.json` verified **from inside the zip** (it pins BepInEx pack 5.4.2350). **Ready to upload; the upload is the owner's step.** The `v5.23.0` and `v5.22.3` zips on disk are superseded and must not be uploaded -- neither carries the 1.0 fix. |
@@ -72,22 +72,29 @@ the plugin and the valcoin configs untouched. The plugin compiles clean against
 **both** 1.0 assemblies — the client's and the dedicated server's — so its static
 surface is satisfied in both roles.
 
-**Untested in-game.** 5.23.1 is deployed to all four Gale profiles and the
-dedicated server but nothing has been launched with it. Two things want a real
-pass: the familiar rename on a helmet (the thing that broke), and prefab
-resolution for familiars and `grant_item` SKUs — prefab ids live in asset
+**5.23.1 is untested in-game.** It is on `HB Test` and the dedicated server, but
+as of 2026-09-18 nothing has been reported from a 1.0 launch with it. Two things
+want a real pass: the familiar rename on a helmet (the thing 1.0 broke), and
+prefab resolution for familiars and `grant_item` SKUs — prefab ids live in asset
 bundles, cannot be checked statically, and are the one category 1.0 could have
-moved.
+moved. Test on `HB Test`: it has the 1.0-capable BepInEx pack (see the box
+above) and, unlike `TG Mods Only`, Jotunn **2.30.0** rather than the 2.29.2 that
+threw on 1.0.
 
-**Sibling mods are NOT all clear.** The same 1.0.7 log shows **Lost Scrolls II
-0.11.0** throwing `Undefined target method` on the identical `GetTooltip`
-change (it has no `Prepare()` guard, so its patch class aborts), and a
-`ConsoleCommand` constructor change breaking `Terminal.InitTerminal` — a
-**Jotunn 2.29.2** problem. Neither is this plugin's, both are in the modpack.
+**Sibling mods are NOT all clear.** The 2026-09-09 1.0.7 log (`TG Mods Only`)
+shows **Lost Scrolls II 0.11.0** throwing `Undefined target method` on the
+identical `GetTooltip` change (it has no `Prepare()` guard, so its patch class
+aborts), and a `ConsoleCommand` constructor change breaking
+`Terminal.InitTerminal` — a **Jotunn 2.29.2** problem, and `HB Test` already
+carries Jotunn 2.30.0. Neither is this plugin's; both are in the modpack, and
+Lost Scrolls II is enabled on `HB Test`, so expect its error in any test log.
 
-5.22.0 and 5.22.1 are **burned numbers** — each ran on HB Test, each had faults
-found there, neither was published; same rule that burned 5.18.0. Their zips are
-still on disk next to the published one; ignore them.
+**Burned numbers, all unpublished:** 5.22.0 and 5.22.1 (faults found on HB Test),
+and 5.22.3, 5.22.4 and 5.23.0 (each deployed locally and superseded the same
+week before anyone uploaded it — 5.22.3 was even zipped). Same rule that burned
+5.18.0: a DLL that already exists under a number never ships different bytes
+under it. Their zips are still on disk; **the only zip to upload is 5.23.1**,
+which contains all of them.
 
 **Deploy rule, reaffirmed 2026-09-18: a new build goes to `HB Test` and to no
 other Gale profile.** Gale hard-links the DLL across profiles (on 2026-09-18,
@@ -126,14 +133,15 @@ as an `admin` grant noted `refund: <sku> could not be delivered`.
    any more, so the blast radius is the "+N Valcoins!" toast figure and
    `ValcoinWallet.BalanceOf` (advisory, used by sibling mods for display). A
    periodic reconcile over connected players would close it.
-3. **Nothing is published, and the public version is now two problems behind.**
-   Thunderstore still serves **5.22.2**, so every player both loses the shop
-   after their first relog *and* is on a build predating Valheim 1.0. Publish
-   **5.23.1** (not the older zips — they lack the 1.0 fix) once it has been
-   tested against a 1.0 server. Upload at
+3. **Nothing is published, and the public version is two problems behind.**
+   Thunderstore still serves **5.22.2** (since 2026-08-31), so every player both
+   loses the shop after their first relog *and* is on a build predating Valheim
+   1.0. Publish **5.23.1** — the zip is built and verified — once it has had one
+   in-game pass on a 1.0 server. Upload at
    <https://thunderstore.io/c/valheim/create/docs/>.
-4. **Update the dedicated server to 1.0** — see the box above. It gates
-   everything else.
+4. **Update the BepInEx pack on the played profiles** (`Hearthbound Valheim`,
+   `Hearthbound - Admin`, `HB Modpack Ref`) to 5.4.2350 in Gale — they cannot run
+   1.0 until then. Not a plugin matter, but it is in the same table above.
 
 **FIXED in 5.22.4: the host of a locally hosted world can use the mod.** Found
 2026-09-01 while testing the relog fix -- a purchase on the dedicated server

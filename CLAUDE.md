@@ -39,7 +39,7 @@ safe. The backend owns the coin ledger; the plugin owns the perk/SKU effects.
 | [docs/PLUGIN.md](docs/PLUGIN.md) | BepInEx plugin layout, build, required DLLs, config files |
 | [docs/PROVIDERS.md](docs/PROVIDERS.md) | Ko-fi / PayPal / Patreon / PayMongo setup + env vars |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Fly.io launch, secrets, volume, redeploy checklist |
-| [docs/SHOP.md](docs/SHOP.md) | Chat commands, shop YAML schema, `grant_item` weekly-limited consumables, in-game panel (F4), advertising kit |
+| [docs/SHOP.md](docs/SHOP.md) | In-game panel (F4), shop YAML schema, effects (`grant_item` / `add_charges` / `armor_vfx` familiars + `valcoin_familiars.yaml`), what buying from a locally hosted world means, quests, advertising kit |
 | [docs/ecosystem/](docs/ecosystem/README.md) | Sibling mods (BiomeLords, Lost Scrolls II, ServerGuide, ServerGuard) + balance-guarded donation-promotion proposals |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Idempotency safety nets, reconciliation, common errors |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup for both halves, keeping the setup-guide PDF current |

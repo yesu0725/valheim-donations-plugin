@@ -44,6 +44,10 @@ Shop purchases and gifts (Shop/Gift tabs) call atomic `/api/spend` and
 `/api/transfer` endpoints, idempotency-keyed so retries are safe. All of
 these are in-game panel (F4) actions over a silent RPC — there is no chat or
 console command path (see [SHOP.md](SHOP.md#no-chat-or-console-commands)).
+The RPC handlers are registered against the **current** `ZRoutedRpc`, which the
+game rebuilds on every world entry; the plugin re-registers per session rather
+than once per process (5.22.3), and resolves a listen-server host — who is not
+in the server's own peer list — by `senderPeerID == ZNet.GetUID()` (5.22.4).
 
 The plugin owns the SKU catalog and applies effects locally. Two effect
 families are live: `grant_item` spawns weekly-limited consumables (feasts,

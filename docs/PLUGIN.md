@@ -8,7 +8,10 @@ client-side to use the donation system at all.
 
 ## Layout
 
-- [Plugin.cs](../valheim-plugin/Plugin.cs) — BepInEx entry, admin YAML, Harmony patch (current version **5.17.0**)
+- [Plugin.cs](../valheim-plugin/Plugin.cs) — BepInEx entry, admin YAML, Harmony patch (current version **5.23.1**).
+  Its `Update` re-registers the RPC handlers **every world session** (5.22.3): `ZRoutedRpc` is rebuilt
+  on each login while the plugin lives for the whole process, so a one-shot registration left every
+  session after the first with no handlers — debited, never delivered
 - [GrantPoller.cs](../valheim-plugin/GrantPoller.cs) — polls `/api/grants/pending`
 - [CatalogSync.cs](../valheim-plugin/CatalogSync.cs) — broadcasts the shop catalog to remote clients over RPC
 - [CoinManager.cs](../valheim-plugin/CoinManager.cs) — balance cache + applied-grant dedupe
@@ -40,8 +43,19 @@ client-side to use the donation system at all.
   `ArmorVfxUpgradePatch` (`InventoryGui.DoCrafting`) carries the aura onto the new piece and
   re-equips it, and `ArmorVfxUpgradePanelPatch` (`InventoryGui.UpdateRecipe`) shows the familiar
   on the Upgrade view — needed because that panel describes the **recipe prefab**, not the
-  player's item, so the `GetTooltip` rename never reaches it. Full table in
-  [SHOP.md](SHOP.md)
+  player's item, so the `GetTooltip` rename never reaches it. That `GetTooltip` lookup matches by
+  **shape** (static, first parameter `ItemData`, widest overload) rather than an exact parameter
+  list since 5.23.1, because Valheim 1.0 added a sixth parameter and the exact match silently
+  disabled the rename. `ArmorVfxManager` re-reads `FamiliarLayout` each tick and moves attached
+  familiars when the file changes. Full table in [SHOP.md](SHOP.md)
+- [FamiliarLayout.cs](../valheim-plugin/FamiliarLayout.cs) — per-familiar hover **position** from
+  `BepInEx/config/valcoin_familiars.yaml` (5.23.0). Client-only, cosmetic, not synced: it changes what
+  *you* see, other players' familiars included. Template generated from the registry so defaults
+  equal the built-in `CompanionOffset + Raise`; re-read on a timestamp change (1 s poll, no
+  `FileSystemWatcher`) and applied live to familiars already on screen. Loaded from
+  `ArmorVfxManager.Awake`, never on a dedicated server. Hand-edit tolerant: entries are told apart by
+  content, not indent; a partial block keeps the shipped values for axes it omits. Scale is
+  deliberately not configurable (baked in at build). See [SHOP.md](SHOP.md#moving-a-familiar--valcoin_familiarsyaml-5230)
 - [LocalIdentity.cs](../valheim-plugin/LocalIdentity.cs) — `Steam64()` resolver extracted so the
   pollers can resolve the local id without the panel
 - [DonationPanel.cs](../valheim-plugin/DonationPanel.cs) — the single combined client-side
@@ -67,9 +81,16 @@ client-side to use the donation system at all.
 - [DonationUiState.cs](../valheim-plugin/DonationUiState.cs) — blocks all game input (ZInput reads +
   Minimap/Inventory hard-guards) while the panel is open, so typing an amount can't open the map/inventory
 - [RpcLayer.cs](../valheim-plugin/RpcLayer.cs) + [UiActionRouter.cs](../valheim-plugin/UiActionRouter.cs)
-  — `vc_action` silent RPC for panel → server actions (the only input path)
+  — `vc_action` silent RPC for panel → server actions (the only input path). Registration is
+  tracked **per `ZRoutedRpc` instance**, not per process (5.22.3), and `OnSessionStart` fires once
+  per world session so per-session client state (admin flag, quest send-times) resets on relog.
+  `UiActionRouter.ResolveSender` resolves a **listen-server host** by `senderPeerID == ZNet.GetUID()`
+  (5.22.4) — a host is not in its own peer list, and every host action used to be dropped silently.
+  `HandlePanelOnClient` is guarded on `IsDedicated()`, not `IsServer()`, for the same reason
 - [BackendClient.cs](../valheim-plugin/BackendClient.cs) — UnityWebRequest wrapper
-- [SteamIdResolver.cs](../valheim-plugin/SteamIdResolver.cs) — Steam64 + PlayFab support
+- [SteamIdResolver.cs](../valheim-plugin/SteamIdResolver.cs) — Steam64 + PlayFab support.
+  `IsListenServer()` / `IsLocalHost(id)` (5.22.4) let `ZdoFor` and `OnlinePlayerFor` fall back to
+  `Player.m_localPlayer` for the host, who has no peer entry
 - [Utils.cs](../valheim-plugin/Utils.cs) — `SharedCoroutineRunner`, shared by the static handler classes
 
 > **Removed:** `ChatDecoration.cs` (donor-badge/chat-title chat prefix) was deleted along with the
@@ -203,6 +224,8 @@ editing.
 | `BepInEx/config/valcoin_config.json` | backend URL + token + poll interval |
 | `BepInEx/config/valcoin_admins.yaml` | admin Steam64 list |
 | `BepInEx/config/valcoin_shop.yaml` | SKU catalog |
+| `BepInEx/config/valcoin_quests.yaml` | ServerGuide quest → Valcoin payouts (server-side; synced to clients over RPC) |
+| `BepInEx/config/valcoin_familiars.yaml` | **client-side, cosmetic**: per-familiar hover position; hot-reloaded; never written on a dedicated server |
 | `BepInEx/config/valcoin_data/coin_balances.json` | balances + applied-grant cache |
 | `BepInEx/config/valcoin_data/perks.json` | per-player perks/charges/title/home |
 

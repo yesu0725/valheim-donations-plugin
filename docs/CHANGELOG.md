@@ -66,6 +66,31 @@ newer plugin can ask for something an old backend doesn't serve:
 
 ---
 
+## Tooling — 2026-09-18: `deploy.ps1` writes to `HB Test` only, and proves it
+
+Not a release; recorded here because it explains why every Gale profile
+happens to be on 5.23.1 and why that will stop being true.
+
+The owner's rule (2026-08-07, reaffirmed 2026-09-18) is that a new build goes to
+the `HB Test` Gale profile and nowhere else. Gale hard-links a mod's DLL across
+every profile with the same version installed — all five shared one inode on
+2026-09-18 — and `Copy-Item` overwrites a file's *contents*, so a plain copy to
+HB Test had been writing through the link into the played profiles since the
+move to Gale on 2026-08-17. The 2026-09-01 "verification pass" then made that
+deliberate by copying into any profile whose hash did not match. Both were the
+opposite of the rule and both are gone.
+
+The script now `Remove-Item`s HB Test's DLL before copying — dropping one link
+leaves the other profiles' bytes alone — so the copy is HB Test's own file. It
+snapshots every other profile's hash first and reports `untouched` / `CHANGED!`
+per profile afterwards; the report is read-only. Verified with `fsutil file
+queryfileid`: HB Test moved from the shared inode to its own, the other four
+unchanged in inode and hash. Full note in
+[OPERATIONS.md](OPERATIONS.md); the dedicated server was never a target and
+stays a manual promotion.
+
+---
+
 ## Plugin 5.23.1 — Valheim 1.0 compatibility
 
 Backend unaffected. **One real break, found and fixed**; everything else in the

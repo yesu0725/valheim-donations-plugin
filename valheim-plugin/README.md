@@ -95,6 +95,8 @@ online. Buy/donate actions themselves live in the same panel.
 - `BepInEx/config/valcoin_config.json`           — backend URL + token
 - `BepInEx/config/valcoin_admins.yaml`           — admin Steam64 list
 - `BepInEx/config/valcoin_shop.yaml`             — SKU catalog
+- `BepInEx/config/valcoin_quests.yaml`           — quest → Valcoin payouts (server-side, synced to clients)
+- `BepInEx/config/valcoin_familiars.yaml`        — **client-side, cosmetic**: where each familiar hovers; hot-reloaded; never written on a dedicated server
 - `BepInEx/config/valcoin_data/coin_balances.json` — balances + applied-grant cache
 - `BepInEx/config/valcoin_data/perks.json`       — per-player perks (legacy; charge pools are now backend-authoritative in the `charges` table)
 - `BepInEx/config/valcoin_shop.example.yaml`     — see `examples/` for the proposed ecosystem catalog
@@ -242,7 +244,12 @@ your host's panel exposes env vars but not config files).
 
 - `BepInEx/config/valcoin_config.json`  — backend URL + token
 - `BepInEx/config/valcoin_admins.yaml`  — admin Steam64 list
+- `BepInEx/config/valcoin_shop.yaml`    — SKU catalog
+- `BepInEx/config/valcoin_quests.yaml`  — quest payouts
+- `BepInEx/config/valcoin_familiars.yaml` — familiar positions (client-side)
 - `BepInEx/config/valcoin_data/coin_balances.json` — running balances cache
 
 The authoritative ledger lives in the backend's SQLite. The plugin's local
-cache is only used to answer `/coins` instantly without a network round-trip.
+cache only answers the panel's balance display instantly without a network
+round-trip (there is no `/coins` command any more — chat/console commands were
+removed in 5.2.0).
